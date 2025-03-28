@@ -3,7 +3,7 @@ struct Reg16([u8; 2]);
 impl Reg16 {
     // // little endian to native u16
     fn get(&self) -> u16 {
-        u16::from_le_bytes(self.0.clone())
+        u16::from_le_bytes(self.0)
     }
 
     // native u16 to little endian
@@ -25,7 +25,7 @@ impl Reg16 {
 
 impl std::fmt::Display for Reg16 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:04x}", u16::from_le_bytes(self.0.clone()))
+        write!(f, "0x{:04x}", self.get())
     }
 }
 
