@@ -107,7 +107,7 @@ impl<'a> Cpu<'a> {
             ..
         } = self;
         println!(
-            "a: 0x{a}, f: 0x{f}, b: 0x{b}, c: 0x{c}, d: 0x{d}, e: 0x{e}, h: 0x{h}, l: 0x{l}, sp: 0x{sp}, pc: 0x{pc}", 
+            "a: {a}, f: {f}, b: {b}, c: {c}, d: {d}, e: {e}, h: {h}, l: {l}, sp: {sp}, pc: {pc}",
         );
     }
 
