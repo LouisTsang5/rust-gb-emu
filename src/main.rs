@@ -16,16 +16,10 @@ impl Reg16 {
         &self.0
     }
 
-    fn as_idx(&self) -> usize {
-        u16::from_le_bytes(self.0.clone()) as usize
-    }
-
-    fn add(&mut self, val: u16) {
-        self.set(self.get().wrapping_add(val));
-    }
-
-    fn sub(&mut self, val: u16) {
-        self.set(self.get().wrapping_sub(val));
+    fn post_inc(&mut self) -> u16 {
+        let retval = self.get();
+        self.set(retval.wrapping_add(1));
+        retval
     }
 }
 
@@ -130,8 +124,7 @@ impl<'a> Cpu<'a> {
         } = self;
 
         // Fetch
-        let byte = mem[pc.as_idx()];
-        pc.add(1);
+        let byte = mem[pc.post_inc() as usize];
 
         // Decode
         let op = match Op::try_from(byte) {
@@ -156,10 +149,8 @@ impl<'a> Cpu<'a> {
             Op::Ld_Imm16_Sp => {
                 // Read next 2 bytes
                 let mut arr = [0u8; 2];
-                arr[0] = mem[pc.as_idx()];
-                pc.add(1);
-                arr[1] = mem[pc.as_idx()];
-                pc.add(1);
+                arr[0] = mem[pc.post_inc() as usize];
+                arr[1] = mem[pc.post_inc() as usize];
 
                 // Use it as index to write val of sp
                 let idx = u16::from_le_bytes(arr);
