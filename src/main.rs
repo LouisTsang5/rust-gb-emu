@@ -224,10 +224,10 @@ impl std::fmt::Display for ParamR16 {
             f,
             "{}",
             match self {
-                Self::BC => "BC",
-                Self::DE => "DE",
-                Self::HL => "HL",
-                Self::SP => "SP",
+                Self::BC => "bc",
+                Self::DE => "de",
+                Self::HL => "hl",
+                Self::SP => "sp",
             }
         )
     }
@@ -277,10 +277,10 @@ impl Into<u8> for Op {
 impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Nop => write!(f, "Nop"),
-            Self::LdR16Imm16(param) => write!(f, "Ld {} Imm16", param),
-            Self::LdZImm16ZSp => write!(f, "Ld Imm16 Sp"),
-            Self::Stop => write!(f, "Stop"),
+            Self::Nop => write!(f, "nop"),
+            Self::LdR16Imm16(param) => write!(f, "ld {}, imm16", param),
+            Self::LdZImm16ZSp => write!(f, "ld [imm16] sp"),
+            Self::Stop => write!(f, "stop"),
         }
     }
 }
