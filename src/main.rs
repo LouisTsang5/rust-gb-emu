@@ -196,6 +196,24 @@ impl<'a> Cpu<'a> {
                 mem[idx as usize] = sp.get_hi();
                 mem[idx as usize + 1] = sp.get_lo();
             }
+            Op::IncR16(param) => {
+                let r = match param {
+                    ParamR16::BC => bc,
+                    ParamR16::DE => de,
+                    ParamR16::HL => hl,
+                    ParamR16::SP => sp,
+                };
+                r.set(r.get().wrapping_add(1));
+            }
+            Op::DecR16(param) => {
+                let r = match param {
+                    ParamR16::BC => bc,
+                    ParamR16::DE => de,
+                    ParamR16::HL => hl,
+                    ParamR16::SP => sp,
+                };
+                r.set(r.get().wrapping_sub(1));
+            }
             Op::Stop => {
                 *halted = true;
             }
@@ -281,6 +299,8 @@ enum Op {
     LdZR16MemZA(ParamR16Mem), // ld [r16mem], a
     LdAZR16MemZ(ParamR16Mem), // ld a, [r16mem]
     LdZImm16ZSp,              // ld [imm16], sp
+    IncR16(ParamR16),         // inc r16
+    DecR16(ParamR16),         // dec r16
     Stop,                     // stop
 }
 
@@ -299,6 +319,8 @@ impl Op {
                 0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
                 0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld [r16mem], a
                 0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
+                0b0011 => Some(Self::IncR16(ParamR16::from((b & 0b00110000) >> 4))), // inc r16
+                0b1011 => Some(Self::DecR16(ParamR16::from((b & 0b00110000) >> 4))), // dec r16
                 0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                 _ => None,
             },
@@ -315,6 +337,8 @@ impl Into<u8> for Op {
             Self::LdZR16MemZA(param) => 0b0000_0010 | ((param as u8) << 4),
             Self::LdAZR16MemZ(param) => 0b0000_1010 | ((param as u8) << 4),
             Self::LdZImm16ZSp => 0b0000_1000,
+            Self::IncR16(param) => 0b0000_0011 | ((param as u8) << 4),
+            Self::DecR16(param) => 0b0000_1011 | ((param as u8) << 4),
             Self::Stop => 0b0001_0000,
         }
     }
@@ -328,32 +352,54 @@ impl std::fmt::Display for Op {
             Self::LdZR16MemZA(param) => write!(f, "ld [{}], a", param),
             Self::LdAZR16MemZ(param) => write!(f, "ld a, [{}]", param),
             Self::LdZImm16ZSp => write!(f, "ld [imm16] sp"),
+            Self::IncR16(param) => write!(f, "inc {}", param),
+            Self::DecR16(param) => write!(f, "dec {}", param),
             Self::Stop => write!(f, "stop"),
         }
     }
 }
 
 fn make_mem() -> Vec<u8> {
-    const MEM_SIZE: usize = 16;
+    const MEM_SIZE: usize = 32;
     const INSTC_END: usize = MEM_SIZE / 2; // Free memory after this point
     let mut mem = vec![0u8; MEM_SIZE];
+    let mut i = 0;
+
+    macro_rules! add_instrc {
+        ($x: expr) => {
+            i += 1;
+            mem[i] = $x.into();
+        };
+    }
 
     // ld hl INSTC_END
-    mem[0] = Op::LdR16Imm16(ParamR16::HL).into();
-    mem[1] = INSTC_END.to_le_bytes()[0];
-    mem[2] = INSTC_END.to_le_bytes()[1];
+    add_instrc!(Op::LdR16Imm16(ParamR16::HL));
+    add_instrc!(INSTC_END.to_le_bytes()[0]);
+    add_instrc!(INSTC_END.to_le_bytes()[1]);
+
+    // inc hl
+    add_instrc!(Op::IncR16(ParamR16::HL));
+    add_instrc!(Op::IncR16(ParamR16::HL));
 
     // ld a [hl+]
-    mem[3] = Op::LdAZR16MemZ(ParamR16Mem::HLI).into();
+    add_instrc!(Op::LdAZR16MemZ(ParamR16Mem::HLI));
 
     // ld [hl+] a
-    mem[4] = Op::LdZR16MemZA(ParamR16Mem::HLI).into();
+    add_instrc!(Op::LdZR16MemZA(ParamR16Mem::HLI));
+
+    // inc hl
+    add_instrc!(Op::IncR16(ParamR16::HL));
+    add_instrc!(Op::IncR16(ParamR16::HL));
+
+    // dec bc
+    add_instrc!(Op::DecR16(ParamR16::BC));
+    add_instrc!(Op::DecR16(ParamR16::BC));
 
     // nop
-    mem[5] = Op::Nop.into();
+    add_instrc!(Op::Nop);
 
     // stop
-    mem[6] = Op::Stop.into();
+    add_instrc!(Op::Stop);
 
     // Set free mem values
     mem[INSTC_END] = 0xFF;
