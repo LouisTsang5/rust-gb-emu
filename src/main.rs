@@ -168,6 +168,24 @@ impl<'a> Cpu<'a> {
                     _ => {}
                 };
             }
+            Op::LdAZR16MemZ(param) => {
+                // Load index
+                let idx = match param {
+                    ParamR16Mem::BC => bc.get(),
+                    ParamR16Mem::DE => de.get(),
+                    ParamR16Mem::HLD | ParamR16Mem::HLI => hl.get(),
+                };
+
+                // Write byte pointed to a
+                af.set_hi(mem[idx as usize]);
+
+                // Increment or decrement hl
+                match param {
+                    ParamR16Mem::HLI => hl.set(hl.get().wrapping_add(1)),
+                    ParamR16Mem::HLD => hl.set(hl.get().wrapping_sub(1)),
+                    _ => {}
+                };
+            }
             Op::LdZImm16ZSp => {
                 // Read next 2 bytes
                 let first = mem[pc.post_inc() as usize];
@@ -261,6 +279,7 @@ enum Op {
     Nop,                      // nop
     LdR16Imm16(ParamR16),     // ld r16, imm16
     LdZR16MemZA(ParamR16Mem), // ld [r16mem], a
+    LdAZR16MemZ(ParamR16Mem), // ld a, [r16mem]
     LdZImm16ZSp,              // ld [imm16], sp
     Stop,                     // stop
 }
@@ -273,13 +292,14 @@ impl Op {
             0b00 => match b & 0b00001111 {
                 // Nop or stop
                 0b0000 => match (b & 0b00110000) >> 4 {
-                    0b00 => Some(Self::Nop),
-                    0b01 => Some(Self::Stop),
+                    0b00 => Some(Self::Nop),  // nop
+                    0b01 => Some(Self::Stop), // stop
                     _ => None,
                 },
-                0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))),
-                0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))),
-                0b1000 => Some(Self::LdZImm16ZSp),
+                0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
+                0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld [r16mem], a
+                0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
+                0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                 _ => None,
             },
             _ => None,
@@ -293,6 +313,7 @@ impl Into<u8> for Op {
             Self::Nop => 0x0,
             Self::LdR16Imm16(param) => 0b0000_0001 | ((param as u8) << 4),
             Self::LdZR16MemZA(param) => 0b0000_0010 | ((param as u8) << 4),
+            Self::LdAZR16MemZ(param) => 0b0000_1010 | ((param as u8) << 4),
             Self::LdZImm16ZSp => 0b0000_1000,
             Self::Stop => 0b0001_0000,
         }
@@ -305,6 +326,7 @@ impl std::fmt::Display for Op {
             Self::Nop => write!(f, "nop"),
             Self::LdR16Imm16(param) => write!(f, "ld {}, imm16", param),
             Self::LdZR16MemZA(param) => write!(f, "ld [{}], a", param),
+            Self::LdAZR16MemZ(param) => write!(f, "ld a, [{}]", param),
             Self::LdZImm16ZSp => write!(f, "ld [imm16] sp"),
             Self::Stop => write!(f, "stop"),
         }
