@@ -122,7 +122,7 @@ impl<'a> Cpu<'a> {
         // Decode
         let op = match Op::try_from(byte) {
             Some(o) => o,
-            None => panic!("Invalid opcode 0x{:02x}", byte),
+            None => panic!("Invalid opcode 0x{:02x} (0b{:08b})", byte, byte),
         };
 
         // Print opcode
@@ -333,20 +333,38 @@ impl std::fmt::Display for Op {
     }
 }
 
-fn get_instrcs() -> Vec<u8> {
-    let i: u8 = Op::LdR16Imm16(ParamR16::BC).into();
-    dbg!(i);
-    vec![
-        Op::Nop.into(),
-        Op::LdR16Imm16(ParamR16::BC).into(),
-        0x11,
-        0x22,
-        Op::Stop.into(),
-    ]
+fn make_mem() -> Vec<u8> {
+    const MEM_SIZE: usize = 16;
+    const INSTC_END: usize = MEM_SIZE / 2; // Free memory after this point
+    let mut mem = vec![0u8; MEM_SIZE];
+
+    // ld hl INSTC_END
+    mem[0] = Op::LdR16Imm16(ParamR16::HL).into();
+    mem[1] = INSTC_END.to_le_bytes()[0];
+    mem[2] = INSTC_END.to_le_bytes()[1];
+
+    // ld a [hl+]
+    mem[3] = Op::LdAZR16MemZ(ParamR16Mem::HLI).into();
+
+    // ld [hl+] a
+    mem[4] = Op::LdZR16MemZA(ParamR16Mem::HLI).into();
+
+    // nop
+    mem[5] = Op::Nop.into();
+
+    // stop
+    mem[6] = Op::Stop.into();
+
+    // Set free mem values
+    mem[INSTC_END] = 0xFF;
+    mem[INSTC_END + 1] = 0xEE;
+
+    // Return
+    mem
 }
 
 fn main() {
-    let mut mem = get_instrcs();
+    let mut mem = make_mem();
     let mut cpu = Cpu::new(&mut mem);
     while !cpu.halted() {
         cpu.step();
