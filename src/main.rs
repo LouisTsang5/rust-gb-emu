@@ -6,18 +6,26 @@ impl Reg16 {
         u16::from_le_bytes(self.0)
     }
 
+    fn get_hi(&self) -> u8 {
+        self.0[0]
+    }
+
+    fn get_lo(&self) -> u8 {
+        self.0[1]
+    }
+
     // native u16 to little endian
     fn set(&mut self, val: u16) {
         self.0[0] = (val & 0xff) as u8;
         self.0[1] = (val >> 8) as u8;
     }
 
-    fn inner(&self) -> &[u8; 2] {
-        &self.0
+    fn set_hi(&mut self, val: u8) {
+        self.0[0] = val;
     }
 
-    fn inner_mut(&mut self) -> &mut [u8; 2] {
-        &mut self.0
+    fn set_lo(&mut self, val: u8) {
+        self.0[1] = val;
     }
 
     fn post_inc(&mut self) -> u16 {
@@ -34,39 +42,14 @@ impl std::fmt::Display for Reg16 {
 }
 
 #[derive(Debug, Default)]
-struct Reg8(u8);
-
-impl Reg8 {
-    // // little endian to native u16
-    fn get(&self) -> u8 {
-        self.0
-    }
-
-    // native u16 to little endian
-    fn set(&mut self, val: u8) {
-        self.0 = val;
-    }
-}
-
-impl std::fmt::Display for Reg8 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:02x}", self.0)
-    }
-}
-
-#[derive(Debug, Default)]
 struct Cpu<'a> {
     halted: bool,
     mem: &'a mut [u8],
 
-    a: Reg8,
-    f: Reg8,
-    b: Reg8,
-    c: Reg8,
-    d: Reg8,
-    e: Reg8,
-    h: Reg8,
-    l: Reg8,
+    af: Reg16,
+    bc: Reg16,
+    de: Reg16,
+    hl: Reg16,
     sp: Reg16,
     pc: Reg16,
 }
@@ -77,14 +60,10 @@ impl<'a> Cpu<'a> {
     }
 
     fn reset(&mut self) {
-        self.a.set(0);
-        self.b.set(0);
-        self.c.set(0);
-        self.d.set(0);
-        self.e.set(0);
-        self.f.set(0);
-        self.h.set(0);
-        self.l.set(0);
+        self.af.set(0);
+        self.bc.set(0);
+        self.de.set(0);
+        self.hl.set(0);
         self.sp.set(0);
         self.pc.set(0);
         self.halted = false;
@@ -92,20 +71,26 @@ impl<'a> Cpu<'a> {
 
     fn print_reg(&self) {
         let Cpu {
-            a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            h,
-            l,
+            af,
+            bc,
+            de,
+            hl,
             sp,
             pc,
             ..
         } = self;
         println!(
-            "a: {a}, f: {f}, b: {b}, c: {c}, d: {d}, e: {e}, h: {h}, l: {l}, sp: {sp}, pc: {pc}",
+            "a: 0x{:02x}, f: 0x{:02x}, b: 0x{:02x}, c: 0x{:02x}, d: 0x{:02x}, e: 0x{:02x}, h: 0x{:02x}, l: 0x{:02x}, sp: {}, pc: {}",
+            af.get_hi(),
+            af.get_lo(),
+            bc.get_hi(),
+            bc.get_lo(),
+            de.get_hi(),
+            de.get_lo(),
+            hl.get_hi(),
+            hl.get_lo(),
+            sp,
+            pc,
         );
     }
 
@@ -120,16 +105,12 @@ impl<'a> Cpu<'a> {
 
     fn step(&mut self) {
         let Cpu {
-            a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            h,
-            l,
-            pc,
+            af,
+            bc,
+            de,
+            hl,
             sp,
+            pc,
             mem,
             halted,
             ..
@@ -157,39 +138,45 @@ impl<'a> Cpu<'a> {
             Op::Nop => {}
             Op::LdR16Imm16(param) => {
                 // Read 2 bytes
-                let lo = mem[pc.post_inc() as usize];
-                let hi = mem[pc.post_inc() as usize];
+                let first = mem[pc.post_inc() as usize];
+                let second = mem[pc.post_inc() as usize];
 
                 // Write to register
                 match param {
-                    ParamR16::BC => {
-                        b.set(lo);
-                        c.set(hi);
-                    }
-                    ParamR16::DE => {
-                        d.set(lo);
-                        e.set(hi);
-                    }
-                    ParamR16::HL => {
-                        h.set(lo);
-                        l.set(hi);
-                    }
-                    ParamR16::SP => {
-                        sp.inner_mut()[0] = lo;
-                        sp.inner_mut()[1] = hi;
-                    }
+                    ParamR16::BC => bc,
+                    ParamR16::DE => de,
+                    ParamR16::HL => hl,
+                    ParamR16::SP => sp,
                 }
+                .set(u16::from_le_bytes([first, second]));
+            }
+            Op::LdZR16MemZA(param) => {
+                // Load index
+                let idx = match param {
+                    ParamR16Mem::BC => bc.get(),
+                    ParamR16Mem::DE => de.get(),
+                    ParamR16Mem::HLD | ParamR16Mem::HLI => hl.get(),
+                };
+
+                // Write a to addr
+                mem[idx as usize] = af.get_hi();
+
+                // Increment or decrement hl
+                match param {
+                    ParamR16Mem::HLI => hl.set(hl.get().wrapping_add(1)),
+                    ParamR16Mem::HLD => hl.set(hl.get().wrapping_sub(1)),
+                    _ => {}
+                };
             }
             Op::LdZImm16ZSp => {
                 // Read next 2 bytes
-                let mut arr = [0u8; 2];
-                arr[0] = mem[pc.post_inc() as usize];
-                arr[1] = mem[pc.post_inc() as usize];
+                let first = mem[pc.post_inc() as usize];
+                let second = mem[pc.post_inc() as usize];
+                let idx = u16::from_le_bytes([first, second]);
 
                 // Use it as index to write val of sp
-                let idx = u16::from_le_bytes(arr);
-                mem[idx as usize] = sp.inner()[0];
-                mem[idx as usize + 1] = sp.inner()[1];
+                mem[idx as usize] = sp.get_hi();
+                mem[idx as usize + 1] = sp.get_lo();
             }
             Op::Stop => {
                 *halted = true;
@@ -213,7 +200,7 @@ impl From<u8> for ParamR16 {
             0b01 => Self::DE,
             0b10 => Self::HL,
             0b11 => Self::SP,
-            _ => panic!("Invalid ParamR16 {:#x}", value),
+            _ => panic!("Invalid r16 param {:#x}", value),
         }
     }
 }
@@ -233,13 +220,49 @@ impl std::fmt::Display for ParamR16 {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ParamR16Mem {
+    BC = 0b00,
+    DE = 0b01,
+    HLI = 0b10, // Post increment HL
+    HLD = 0b11, // Post decrement HL
+}
+
+impl From<u8> for ParamR16Mem {
+    fn from(value: u8) -> Self {
+        match value {
+            0b00 => Self::BC,
+            0b01 => Self::DE,
+            0b10 => Self::HLI,
+            0b11 => Self::HLD,
+            _ => panic!("Invalid r16mem param {:#x}", value),
+        }
+    }
+}
+
+impl std::fmt::Display for ParamR16Mem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::BC => "bc",
+                Self::DE => "de",
+                Self::HLI => "hl+",
+                Self::HLD => "hl-",
+            }
+        )
+    }
+}
+
 // Z = []
 #[derive(Debug)]
 enum Op {
-    Nop,                  // nop
-    LdR16Imm16(ParamR16), // ld r16, imm16
-    LdZImm16ZSp,          // ld [imm16], sp
-    Stop,                 // stop
+    Nop,                      // nop
+    LdR16Imm16(ParamR16),     // ld r16, imm16
+    LdZR16MemZA(ParamR16Mem), // ld [r16mem], a
+    LdZImm16ZSp,              // ld [imm16], sp
+    Stop,                     // stop
 }
 
 impl Op {
@@ -255,6 +278,7 @@ impl Op {
                     _ => None,
                 },
                 0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))),
+                0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))),
                 0b1000 => Some(Self::LdZImm16ZSp),
                 _ => None,
             },
@@ -268,6 +292,7 @@ impl Into<u8> for Op {
         match self {
             Self::Nop => 0x0,
             Self::LdR16Imm16(param) => 0b0000_0001 | ((param as u8) << 4),
+            Self::LdZR16MemZA(param) => 0b0000_0010 | ((param as u8) << 4),
             Self::LdZImm16ZSp => 0b0000_1000,
             Self::Stop => 0b0001_0000,
         }
@@ -279,6 +304,7 @@ impl std::fmt::Display for Op {
         match self {
             Self::Nop => write!(f, "nop"),
             Self::LdR16Imm16(param) => write!(f, "ld {}, imm16", param),
+            Self::LdZR16MemZA(param) => write!(f, "ld [{}], a", param),
             Self::LdZImm16ZSp => write!(f, "ld [imm16] sp"),
             Self::Stop => write!(f, "stop"),
         }
