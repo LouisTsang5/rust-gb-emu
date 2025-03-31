@@ -180,7 +180,7 @@ impl<'a> Cpu<'a> {
                     }
                 }
             }
-            Op::Ld_Imm16_Sp => {
+            Op::LdZImm16ZSp => {
                 // Read next 2 bytes
                 let mut arr = [0u8; 2];
                 arr[0] = mem[pc.post_inc() as usize];
@@ -233,13 +233,13 @@ impl std::fmt::Display for ParamR16 {
     }
 }
 
-// _ is []
+// Z = []
 #[derive(Debug)]
 enum Op {
-    Nop,
-    Stop,
-    LdR16Imm16(ParamR16),
-    Ld_Imm16_Sp,
+    Nop,                  // nop
+    LdR16Imm16(ParamR16), // ld r16, imm16
+    LdZImm16ZSp,          // ld [imm16], sp
+    Stop,                 // stop
 }
 
 impl Op {
@@ -255,7 +255,7 @@ impl Op {
                     _ => None,
                 },
                 0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))),
-                0b1000 => Some(Self::Ld_Imm16_Sp),
+                0b1000 => Some(Self::LdZImm16ZSp),
                 _ => None,
             },
             _ => None,
@@ -268,7 +268,7 @@ impl Into<u8> for Op {
         match self {
             Self::Nop => 0x0,
             Self::LdR16Imm16(param) => 0b0000_0001 | ((param as u8) << 4),
-            Self::Ld_Imm16_Sp => 0b0000_1000,
+            Self::LdZImm16ZSp => 0b0000_1000,
             Self::Stop => 0b0001_0000,
         }
     }
@@ -279,7 +279,7 @@ impl std::fmt::Display for Op {
         match self {
             Self::Nop => write!(f, "Nop"),
             Self::LdR16Imm16(param) => write!(f, "Ld {} Imm16", param),
-            Self::Ld_Imm16_Sp => write!(f, "Ld Imm16 Sp"),
+            Self::LdZImm16ZSp => write!(f, "Ld Imm16 Sp"),
             Self::Stop => write!(f, "Stop"),
         }
     }
