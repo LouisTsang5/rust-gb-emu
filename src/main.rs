@@ -262,10 +262,119 @@ impl<'a> Cpu<'a> {
                 self.set_hf(((hl_val & 0x0FFF) + (add_num & 0x0FFF)) > 0x0FFF); // 12th bit overflow
                 self.set_cf((0xFFFFu16 - add_num) < hl_val); // 16th bit overflow
             }
+            Op::IncR8(param) => {
+                // Read the byte
+                let old_val = match param {
+                    ParamR8::A => af.get_hi(),
+                    ParamR8::B => bc.get_hi(),
+                    ParamR8::C => bc.get_lo(),
+                    ParamR8::D => de.get_hi(),
+                    ParamR8::E => de.get_lo(),
+                    ParamR8::H => hl.get_hi(),
+                    ParamR8::L => hl.get_lo(),
+                    ParamR8::ZHLZ => mem[hl.get() as usize],
+                };
+
+                // Write the byte
+                let new_val = old_val.wrapping_add(1);
+                match param {
+                    ParamR8::A => af.set_hi(new_val),
+                    ParamR8::B => bc.set_hi(new_val),
+                    ParamR8::C => bc.set_lo(new_val),
+                    ParamR8::D => de.set_hi(new_val),
+                    ParamR8::E => de.set_lo(new_val),
+                    ParamR8::H => hl.set_hi(new_val),
+                    ParamR8::L => hl.set_lo(new_val),
+                    ParamR8::ZHLZ => mem[hl.get() as usize] = new_val,
+                };
+
+                // Set Flags
+                self.set_zf(new_val == 0);
+                self.set_nf(false);
+                self.set_hf((old_val & 0x0F) == 0x0F); // 4th bit overflow
+            }
+            Op::DecR8(param) => {
+                // Read the byte
+                let old_val = match param {
+                    ParamR8::A => af.get_hi(),
+                    ParamR8::B => bc.get_hi(),
+                    ParamR8::C => bc.get_lo(),
+                    ParamR8::D => de.get_hi(),
+                    ParamR8::E => de.get_lo(),
+                    ParamR8::H => hl.get_hi(),
+                    ParamR8::L => hl.get_lo(),
+                    ParamR8::ZHLZ => mem[hl.get() as usize],
+                };
+
+                // Write the byte
+                let new_val = old_val.wrapping_sub(1);
+                match param {
+                    ParamR8::A => af.set_hi(new_val),
+                    ParamR8::B => bc.set_hi(new_val),
+                    ParamR8::C => bc.set_lo(new_val),
+                    ParamR8::D => de.set_hi(new_val),
+                    ParamR8::E => de.set_lo(new_val),
+                    ParamR8::H => hl.set_hi(new_val),
+                    ParamR8::L => hl.set_lo(new_val),
+                    ParamR8::ZHLZ => mem[hl.get() as usize] = new_val,
+                };
+
+                // Set Flags
+                self.set_zf(new_val == 0);
+                self.set_nf(true);
+                self.set_hf((old_val & 0x0F) == 0x00); // 5th bit borrow
+            }
             Op::Stop => {
                 *halted = true;
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ParamR8 {
+    B = 0b000,
+    C = 0b001,
+    D = 0b010,
+    E = 0b011,
+    H = 0b100,
+    L = 0b101,
+    ZHLZ = 0b110,
+    A = 0b111,
+}
+
+impl From<u8> for ParamR8 {
+    fn from(value: u8) -> Self {
+        match value {
+            0b000 => Self::B,
+            0b001 => Self::C,
+            0b010 => Self::D,
+            0b011 => Self::E,
+            0b100 => Self::H,
+            0b101 => Self::L,
+            0b110 => Self::ZHLZ,
+            0b111 => Self::A,
+            _ => panic!("Invalid r8 param {:#X}", value),
+        }
+    }
+}
+
+impl std::fmt::Display for ParamR8 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::B => "a",
+                Self::C => "c",
+                Self::D => "d",
+                Self::E => "e",
+                Self::H => "h",
+                Self::L => "l",
+                Self::ZHLZ => "[hl]",
+                Self::A => "a",
+            }
+        )
     }
 }
 
@@ -350,6 +459,8 @@ enum Op {
     IncR16(ParamR16),         // inc r16
     DecR16(ParamR16),         // dec r16
     AddHlR16(ParamR16),       // add hl, r16
+    IncR8(ParamR8),           // inc r8
+    DecR8(ParamR8),           // dec r8
     Stop,                     // stop
 }
 
@@ -357,22 +468,27 @@ impl Op {
     fn try_from(b: u8) -> Option<Self> {
         // match first top 2 bits to find instruction block
         match b >> 6 {
-            // Block 0: match bottom 4 bits
-            0b00 => match b & 0b00001111 {
-                // Nop or stop
-                0b0000 => match (b & 0b00110000) >> 4 {
-                    0b00 => Some(Self::Nop),  // nop
-                    0b01 => Some(Self::Stop), // stop
+            // Block 0:
+            // 1. First, match the bottom 3 bits for instructions
+            // 2. Then, if there is no match in 1., match the bottom 4 bits for instructions
+            0b00 => match b & 0b0000_0111 {
+                0b100 => Some(Self::IncR8(ParamR8::from((b & 0b00111000) >> 3))), // inc r8
+                0b101 => Some(Self::DecR8(ParamR8::from((b & 0b00111000) >> 3))), // dec r8
+                _ => match b & 0b0000_1111 {
+                    0b0000 => match (b & 0b0011_0000) >> 4 {
+                        0b00 => Some(Self::Nop),  // nop
+                        0b01 => Some(Self::Stop), // stop
+                        _ => None,
+                    },
+                    0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
+                    0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld [r16mem], a
+                    0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
+                    0b0011 => Some(Self::IncR16(ParamR16::from((b & 0b00110000) >> 4))), // inc r16
+                    0b1011 => Some(Self::DecR16(ParamR16::from((b & 0b00110000) >> 4))), // dec r16
+                    0b1001 => Some(Self::AddHlR16(ParamR16::from((b & 0b00110000) >> 4))), // add hl, r16
+                    0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                     _ => None,
                 },
-                0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
-                0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld [r16mem], a
-                0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
-                0b0011 => Some(Self::IncR16(ParamR16::from((b & 0b00110000) >> 4))), // inc r16
-                0b1011 => Some(Self::DecR16(ParamR16::from((b & 0b00110000) >> 4))), // dec r16
-                0b1001 => Some(Self::AddHlR16(ParamR16::from((b & 0b00110000) >> 4))), // add hl, r16
-                0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
-                _ => None,
             },
             _ => None,
         }
@@ -390,6 +506,8 @@ impl Into<u8> for Op {
             Self::IncR16(param) => 0b0000_0011 | ((param as u8) << 4),
             Self::DecR16(param) => 0b0000_1011 | ((param as u8) << 4),
             Self::AddHlR16(param) => 0b0000_1001 | ((param as u8) << 4),
+            Self::IncR8(param) => 0b0000_0100 | ((param as u8) << 3),
+            Self::DecR8(param) => 0b0000_0101 | ((param as u8) << 3),
             Self::Stop => 0b0001_0000,
         }
     }
@@ -406,6 +524,8 @@ impl std::fmt::Display for Op {
             Self::IncR16(param) => write!(f, "inc {}", param),
             Self::DecR16(param) => write!(f, "dec {}", param),
             Self::AddHlR16(param) => write!(f, "add hl, {}", param),
+            Self::IncR8(param) => write!(f, "inc {}", param),
+            Self::DecR8(param) => write!(f, "dec {}", param),
             Self::Stop => write!(f, "stop"),
         }
     }
