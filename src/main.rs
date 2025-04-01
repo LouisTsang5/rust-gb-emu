@@ -43,18 +43,49 @@ impl std::fmt::Display for Reg16 {
 
 #[derive(Debug, Default)]
 struct Cpu<'a> {
-    halted: bool,
+    // Memory
     mem: &'a mut [u8],
 
+    // Registers
     af: Reg16,
     bc: Reg16,
     de: Reg16,
     hl: Reg16,
     sp: Reg16,
     pc: Reg16,
+
+    // Halted
+    halted: bool,
+}
+
+// Generate flag functions
+macro_rules! flag_fns {
+    ($($get_fn:ident => $set_fn:ident => $offset:expr),+ $(,)*) => {
+        $(
+            fn $get_fn(&self) -> bool {
+                ((self.af.get_lo() & (0b1 << $offset)) >> $offset) > 0
+            }
+
+            fn $set_fn(&mut self, val: bool) {
+                let f = self.af.get_lo();
+                let mask = 0b1 << $offset;
+                self.af.set_lo(match val {
+                    true => f | mask,
+                    false => f & (0xff ^ mask),
+                });
+            }
+        )*
+    };
 }
 
 impl<'a> Cpu<'a> {
+    flag_fns! {
+        get_zf => set_zf => 7, // Zero Flag 0b1000_0000
+        get_nf => set_nf => 6, // Subtraction Flag 0b0100_0000
+        get_hf => set_hf => 5, // Half Carry Flag 0b0010_0000
+        get_cf => set_cf => 4, // Carry Flag 0b0001_0000
+    }
+
     fn halted(&self) -> bool {
         self.halted
     }
