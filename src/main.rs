@@ -111,7 +111,7 @@ impl<'a> Cpu<'a> {
             ..
         } = self;
         println!(
-            "a: 0x{:02x}, f: 0x{:02x}, b: 0x{:02x}, c: 0x{:02x}, d: 0x{:02x}, e: 0x{:02x}, h: 0x{:02x}, l: 0x{:02x}, sp: {}, pc: {}",
+            "a: 0x{0:02X}, f: 0x{1:002X} (0b{1:08b}), b: 0x{2:002X}, c: 0x{3:002X}, d: 0x{4:002X}, e: 0x{5:002X}, h: 0x{6:002X}, l: 0x{7:002X}, sp: {8}, pc: {9}",
             af.get_hi(),
             af.get_lo(),
             bc.get_hi(),
@@ -153,7 +153,7 @@ impl<'a> Cpu<'a> {
         // Decode
         let op = match Op::try_from(byte) {
             Some(o) => o,
-            None => panic!("Invalid opcode 0x{:02x} (0b{:08b})", byte, byte),
+            None => panic!("Invalid opcode 0x{:02X} (0b{:08b})", byte, byte),
         };
 
         // Print opcode
@@ -450,7 +450,7 @@ fn main() {
     // Print result
     cpu.print_reg();
     for b in &mem {
-        print!("0x{:02x} ", b);
+        print!("0x{:02X} ", b);
     }
     println!("");
 }
