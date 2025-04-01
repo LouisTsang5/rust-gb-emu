@@ -324,6 +324,19 @@ impl<'a> Cpu<'a> {
                 self.set_nf(true);
                 self.set_hf((old_val & 0x0F) == 0x00); // 5th bit borrow
             }
+            Op::LdR8Imm8(param) => {
+                let val = mem[pc.post_inc() as usize];
+                match param {
+                    ParamR8::A => af.set_hi(val),
+                    ParamR8::B => bc.set_hi(val),
+                    ParamR8::C => bc.set_lo(val),
+                    ParamR8::D => de.set_hi(val),
+                    ParamR8::E => de.set_lo(val),
+                    ParamR8::H => hl.set_hi(val),
+                    ParamR8::L => hl.set_lo(val),
+                    ParamR8::ZHLZ => mem[hl.get() as usize] = val,
+                };
+            }
             Op::Stop => {
                 *halted = true;
             }
@@ -461,6 +474,7 @@ enum Op {
     AddHlR16(ParamR16),       // add hl, r16
     IncR8(ParamR8),           // inc r8
     DecR8(ParamR8),           // dec r8
+    LdR8Imm8(ParamR8),        // ld r8, imm8
     Stop,                     // stop
 }
 
@@ -474,6 +488,7 @@ impl Op {
             0b00 => match b & 0b0000_0111 {
                 0b100 => Some(Self::IncR8(ParamR8::from((b & 0b00111000) >> 3))), // inc r8
                 0b101 => Some(Self::DecR8(ParamR8::from((b & 0b00111000) >> 3))), // dec r8
+                0b110 => Some(Self::LdR8Imm8(ParamR8::from((b & 0b00111000) >> 3))), // dec r8
                 _ => match b & 0b0000_1111 {
                     0b0000 => match (b & 0b0011_0000) >> 4 {
                         0b00 => Some(Self::Nop),  // nop
@@ -508,6 +523,7 @@ impl Into<u8> for Op {
             Self::AddHlR16(param) => 0b0000_1001 | ((param as u8) << 4),
             Self::IncR8(param) => 0b0000_0100 | ((param as u8) << 3),
             Self::DecR8(param) => 0b0000_0101 | ((param as u8) << 3),
+            Self::LdR8Imm8(param) => 0b0000_0110 | ((param as u8) << 3),
             Self::Stop => 0b0001_0000,
         }
     }
@@ -526,6 +542,7 @@ impl std::fmt::Display for Op {
             Self::AddHlR16(param) => write!(f, "add hl, {}", param),
             Self::IncR8(param) => write!(f, "inc {}", param),
             Self::DecR8(param) => write!(f, "dec {}", param),
+            Self::LdR8Imm8(param) => write!(f, "ld {}, imm8", param),
             Self::Stop => write!(f, "stop"),
         }
     }
