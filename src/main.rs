@@ -284,7 +284,7 @@ impl From<u8> for ParamR16 {
             0b01 => Self::DE,
             0b10 => Self::HL,
             0b11 => Self::SP,
-            _ => panic!("Invalid r16 param {:#x}", value),
+            _ => panic!("Invalid r16 param {:#X}", value),
         }
     }
 }
@@ -319,7 +319,7 @@ impl From<u8> for ParamR16Mem {
             0b01 => Self::DE,
             0b10 => Self::HLI,
             0b11 => Self::HLD,
-            _ => panic!("Invalid r16mem param {:#x}", value),
+            _ => panic!("Invalid r16mem param {:#X}", value),
         }
     }
 }
