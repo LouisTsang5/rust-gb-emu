@@ -3,7 +3,7 @@ struct Reg16([u8; 2]);
 impl Reg16 {
     // // little endian to native u16
     fn get(&self) -> u16 {
-        u16::from_le_bytes(self.0)
+        u16::from_be_bytes(self.0)
     }
 
     fn get_hi(&self) -> u8 {
@@ -16,8 +16,8 @@ impl Reg16 {
 
     // native u16 to little endian
     fn set(&mut self, val: u16) {
-        self.0[0] = (val & 0xff) as u8;
-        self.0[1] = (val >> 8) as u8;
+        self.0[0] = (val >> 8) as u8;
+        self.0[1] = (val & 0xff) as u8;
     }
 
     fn set_hi(&mut self, val: u8) {
@@ -193,8 +193,8 @@ impl<'a> Cpu<'a> {
                 let idx = u16::from_le_bytes([first, second]);
 
                 // Use it as index to write val of sp
-                mem[idx as usize] = sp.get_hi();
-                mem[idx as usize + 1] = sp.get_lo();
+                mem[idx as usize] = sp.get_lo();
+                mem[idx as usize + 1] = sp.get_hi();
             }
             Op::IncR16(param) => {
                 let r = match param {
