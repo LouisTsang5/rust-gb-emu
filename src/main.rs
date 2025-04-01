@@ -245,6 +245,23 @@ impl<'a> Cpu<'a> {
                 };
                 r.set(r.get().wrapping_sub(1));
             }
+            Op::AddHlR16(param) => {
+                let hl_val = hl.get();
+                let add_num: u16 = match param {
+                    ParamR16::BC => bc.get(),
+                    ParamR16::DE => de.get(),
+                    ParamR16::HL => hl.get(),
+                    ParamR16::SP => sp.get(),
+                };
+
+                // Addition
+                hl.set(hl_val.wrapping_add(add_num));
+
+                // Set flags
+                self.set_nf(false); // sub flag
+                self.set_hf(((hl_val & 0x0FFF) + (add_num & 0x0FFF)) > 0x0FFF); // 12th bit overflow
+                self.set_cf((0xFFFFu16 - add_num) < hl_val); // 16th bit overflow
+            }
             Op::Stop => {
                 *halted = true;
             }
@@ -332,6 +349,7 @@ enum Op {
     LdZImm16ZSp,              // ld [imm16], sp
     IncR16(ParamR16),         // inc r16
     DecR16(ParamR16),         // dec r16
+    AddHlR16(ParamR16),       // add hl, r16
     Stop,                     // stop
 }
 
@@ -352,6 +370,7 @@ impl Op {
                 0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
                 0b0011 => Some(Self::IncR16(ParamR16::from((b & 0b00110000) >> 4))), // inc r16
                 0b1011 => Some(Self::DecR16(ParamR16::from((b & 0b00110000) >> 4))), // dec r16
+                0b1001 => Some(Self::AddHlR16(ParamR16::from((b & 0b00110000) >> 4))), // add hl, r16
                 0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                 _ => None,
             },
@@ -370,6 +389,7 @@ impl Into<u8> for Op {
             Self::LdZImm16ZSp => 0b0000_1000,
             Self::IncR16(param) => 0b0000_0011 | ((param as u8) << 4),
             Self::DecR16(param) => 0b0000_1011 | ((param as u8) << 4),
+            Self::AddHlR16(param) => 0b0000_1001 | ((param as u8) << 4),
             Self::Stop => 0b0001_0000,
         }
     }
@@ -385,6 +405,7 @@ impl std::fmt::Display for Op {
             Self::LdZImm16ZSp => write!(f, "ld [imm16] sp"),
             Self::IncR16(param) => write!(f, "inc {}", param),
             Self::DecR16(param) => write!(f, "dec {}", param),
+            Self::AddHlR16(param) => write!(f, "add hl, {}", param),
             Self::Stop => write!(f, "stop"),
         }
     }
@@ -426,6 +447,9 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(Op::DecR16(ParamR16::BC));
     add_instrc!(Op::DecR16(ParamR16::BC));
 
+    // add hl, bc
+    add_instrc!(Op::AddHlR16(ParamR16::BC));
+
     // nop
     add_instrc!(Op::Nop);
 
@@ -435,6 +459,7 @@ fn make_mem() -> Vec<u8> {
     // Set free mem values
     mem[INSTC_END] = 0xFF;
     mem[INSTC_END + 1] = 0xEE;
+    mem[INSTC_END + 2] = 0xDD;
 
     // Return
     mem
