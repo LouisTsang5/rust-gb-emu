@@ -549,15 +549,23 @@ impl std::fmt::Display for Op {
 }
 
 fn make_mem() -> Vec<u8> {
-    const MEM_SIZE: usize = 32;
+    const MEM_SIZE: usize = 64;
     const INSTC_END: usize = MEM_SIZE / 2; // Free memory after this point
     let mut mem = vec![0u8; MEM_SIZE];
-    let mut i = 0;
+    let mut i_instr = 0;
+    let mut i_data = INSTC_END;
 
     macro_rules! add_instrc {
         ($x: expr) => {
-            i += 1;
-            mem[i] = $x.into();
+            mem[i_instr] = $x.into();
+            i_instr += 1;
+        };
+    }
+
+    macro_rules! add_data {
+        ($x: expr) => {
+            mem[i_data] = $x;
+            i_data += 1;
         };
     }
 
@@ -587,6 +595,17 @@ fn make_mem() -> Vec<u8> {
     // add hl, bc
     add_instrc!(Op::AddHlR16(ParamR16::BC));
 
+    // ld e, imm8
+    add_instrc!(Op::LdR8Imm8(ParamR8::E));
+    add_instrc!(0xEE);
+
+    // inc e
+    add_instrc!(Op::IncR8(ParamR8::E));
+    add_instrc!(Op::IncR8(ParamR8::E));
+
+    // dec e
+    add_instrc!(Op::DecR8(ParamR8::E));
+
     // nop
     add_instrc!(Op::Nop);
 
@@ -594,9 +613,9 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(Op::Stop);
 
     // Set free mem values
-    mem[INSTC_END] = 0xFF;
-    mem[INSTC_END + 1] = 0xEE;
-    mem[INSTC_END + 2] = 0xDD;
+    add_data!(0xFF);
+    add_data!(0xEE);
+    add_data!(0xDD);
 
     // Return
     mem
