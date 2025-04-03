@@ -111,7 +111,7 @@ impl<'a> Cpu<'a> {
             ..
         } = self;
         println!(
-            "a: 0x{0:02X}, f: 0x{1:002X} (0b{1:08b}), b: 0x{2:002X}, c: 0x{3:002X}, d: 0x{4:002X}, e: 0x{5:002X}, h: 0x{6:002X}, l: 0x{7:002X}, sp: {8}, pc: {9}",
+            "a: 0x{0:02X} (0b{0:08b}), f: 0x{1:002X} (0b{1:08b}), b: 0x{2:002X}, c: 0x{3:002X}, d: 0x{4:002X}, e: 0x{5:002X}, h: 0x{6:002X}, l: 0x{7:002X}, sp: {8}, pc: {9}",
             af.get_hi(),
             af.get_lo(),
             bc.get_hi(),
@@ -337,6 +337,42 @@ impl<'a> Cpu<'a> {
                     ParamR8::ZHLZ => mem[hl.get() as usize] = val,
                 };
             }
+            Op::Rlca => {
+                // Rotate A
+                let a_val = af.get_hi();
+                let top_bit = (a_val & 0b1000_0000) != 0;
+                af.set_hi(
+                    (a_val << 1)
+                        + match top_bit {
+                            true => 0b0000_0001,
+                            false => 0,
+                        },
+                );
+
+                // Set flags
+                self.set_zf(false);
+                self.set_nf(false);
+                self.set_hf(false);
+                self.set_cf(top_bit);
+            }
+            Op::Rrca => {
+                // Rotate A
+                let a_val = af.get_hi();
+                let bottom_bit = (a_val & 0b0000_0001) != 0;
+                af.set_hi(
+                    (a_val >> 1)
+                        + match bottom_bit {
+                            true => 0b1000_0000,
+                            false => 0,
+                        },
+                );
+
+                // Set flags
+                self.set_zf(false);
+                self.set_nf(false);
+                self.set_hf(false);
+                self.set_cf(bottom_bit);
+            }
             Op::Stop => {
                 *halted = true;
             }
@@ -475,6 +511,8 @@ enum Op {
     IncR8(ParamR8),           // inc r8
     DecR8(ParamR8),           // dec r8
     LdR8Imm8(ParamR8),        // ld r8, imm8
+    Rlca,                     // rlca
+    Rrca,                     // rrca
     Stop,                     // stop
 }
 
@@ -489,6 +527,11 @@ impl Op {
                 0b100 => Some(Self::IncR8(ParamR8::from((b & 0b00111000) >> 3))), // inc r8
                 0b101 => Some(Self::DecR8(ParamR8::from((b & 0b00111000) >> 3))), // dec r8
                 0b110 => Some(Self::LdR8Imm8(ParamR8::from((b & 0b00111000) >> 3))), // dec r8
+                0b111 => match b {
+                    0b0000_0111 => Some(Self::Rlca), // rlca
+                    0b0000_1111 => Some(Self::Rrca), // rrca
+                    _ => None,
+                },
                 _ => match b & 0b0000_1111 {
                     0b0000 => match (b & 0b0011_0000) >> 4 {
                         0b00 => Some(Self::Nop),  // nop
@@ -524,6 +567,8 @@ impl Into<u8> for Op {
             Self::IncR8(param) => 0b0000_0100 | ((param as u8) << 3),
             Self::DecR8(param) => 0b0000_0101 | ((param as u8) << 3),
             Self::LdR8Imm8(param) => 0b0000_0110 | ((param as u8) << 3),
+            Self::Rlca => 0b0000_0111,
+            Self::Rrca => 0b0000_1111,
             Self::Stop => 0b0001_0000,
         }
     }
@@ -543,6 +588,8 @@ impl std::fmt::Display for Op {
             Self::IncR8(param) => write!(f, "inc {}", param),
             Self::DecR8(param) => write!(f, "dec {}", param),
             Self::LdR8Imm8(param) => write!(f, "ld {}, imm8", param),
+            Self::Rlca => write!(f, "rlca"),
+            Self::Rrca => write!(f, "rrca"),
             Self::Stop => write!(f, "stop"),
         }
     }
@@ -605,6 +652,14 @@ fn make_mem() -> Vec<u8> {
 
     // dec e
     add_instrc!(Op::DecR8(ParamR8::E));
+
+    // rlca
+    add_instrc!(Op::Rlca);
+    add_instrc!(Op::Rlca);
+
+    // rrca
+    add_instrc!(Op::Rrca);
+    add_instrc!(Op::Rrca);
 
     // nop
     add_instrc!(Op::Nop);
