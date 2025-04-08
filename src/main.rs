@@ -613,9 +613,9 @@ enum Op {
     Scf,                      // scf
     Ccf,                      // ccf
     JrImm8,                   // jr imm8
+    Stop,                     // stop
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
-    Stop,                     // stop
 }
 
 impl Op {
