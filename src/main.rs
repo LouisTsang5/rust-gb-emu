@@ -420,6 +420,28 @@ impl<'a> Cpu<'a> {
                     self.set_cf(true);
                 }
             }
+            Op::AddAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc() as usize];
+                let a = lhs.wrapping_add(rhs);
+                self.af.set_hi(a);
+
+                self.set_zf(a == 0);
+                self.set_nf(false);
+                self.set_hf(((lhs & 0xF) + (rhs & 0xF)) > 0xF); // bit 3 overflow
+                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
+            }
+            Op::SubAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc() as usize];
+                let a = lhs.wrapping_sub(rhs);
+                self.af.set_hi(a);
+
+                self.set_zf(a == 0);
+                self.set_nf(true);
+                self.set_hf((lhs & 0xF) < (rhs & 0xF)); // bit 4 borrow
+                self.set_cf(lhs < rhs); // results in negative
+            }
             Op::Stop => {
                 self.halted = true;
             }
@@ -563,6 +585,8 @@ enum Op {
     Rla,                      // rla
     Rra,                      // rra
     Daa,                      // daa
+    AddAImm8,                 // add a, imm8
+    SubAImm8,                 // sub a, imm8
     Stop,                     // stop
 }
 
@@ -601,6 +625,12 @@ impl Op {
                     _ => None,
                 },
             },
+            // Block 3:
+            0b11 => match b {
+                0b1100_0110 => Some(Self::AddAImm8),
+                0b1101_0110 => Some(Self::SubAImm8),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -625,6 +655,8 @@ impl Into<u8> for Op {
             Self::Rla => 0b0001_0111,
             Self::Rra => 0b0001_1111,
             Self::Daa => 0b0010_0111,
+            Self::AddAImm8 => 0b1100_0110,
+            Self::SubAImm8 => 0b1101_0110,
             Self::Stop => 0b0001_0000,
         }
     }
@@ -649,6 +681,8 @@ impl std::fmt::Display for Op {
             Self::Rla => write!(f, "rla"),
             Self::Rra => write!(f, "rra"),
             Self::Daa => write!(f, "daa"),
+            Self::AddAImm8 => write!(f, "add a, imm8"),
+            Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Stop => write!(f, "stop"),
         }
     }
@@ -656,7 +690,7 @@ impl std::fmt::Display for Op {
 
 fn make_mem() -> Vec<u8> {
     const MEM_SIZE: usize = 64;
-    const INSTC_END: usize = MEM_SIZE / 2; // Free memory after this point
+    const INSTC_END: usize = MEM_SIZE - 8; // Free memory after this point
     let mut mem = vec![0u8; MEM_SIZE];
     let mut i_instr = 0;
     let mut i_data = INSTC_END;
@@ -726,6 +760,27 @@ fn make_mem() -> Vec<u8> {
     // rra
     add_instrc!(Op::Rra);
 
+    // add a, imm8
+    add_instrc!(Op::AddAImm8);
+    add_instrc!(0x23);
+
+    // daa
+    add_instrc!(Op::Daa);
+
+    // sub a, imm8
+    add_instrc!(Op::SubAImm8);
+    add_instrc!(0x09);
+
+    // daa
+    add_instrc!(Op::Daa);
+
+    // sub a, imm8
+    add_instrc!(Op::SubAImm8);
+    add_instrc!(0x09);
+
+    // daa
+    add_instrc!(Op::Daa);
+
     // nop
     add_instrc!(Op::Nop);
 
@@ -735,7 +790,7 @@ fn make_mem() -> Vec<u8> {
     // Set free mem values
     add_data!(0xFF);
     add_data!(0xEE);
-    add_data!(0xDD);
+    add_data!(0x12);
 
     dbg!(i_instr);
     dbg!(i_data);
