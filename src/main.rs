@@ -775,7 +775,7 @@ fn make_mem() -> Vec<u8> {
     // add hl, bc
     add_instrc!(Op::AddHlR16(ParamR16::BC));
 
-    // ld e, imm8
+    // ld e, $0xEE
     add_instrc!(Op::LdR8Imm8(ParamR8::E));
     add_instrc!(0xEE);
 
@@ -800,21 +800,21 @@ fn make_mem() -> Vec<u8> {
     // rra
     add_instrc!(Op::Rra);
 
-    // add a, imm8
+    // add a, $0x23
     add_instrc!(Op::AddAImm8);
     add_instrc!(0x23);
 
     // daa
     add_instrc!(Op::Daa);
 
-    // sub a, imm8
+    // sub a, $0x09
     add_instrc!(Op::SubAImm8);
     add_instrc!(0x09);
 
     // daa
     add_instrc!(Op::Daa);
 
-    // sub a, imm8
+    // sub a, $0x09
     add_instrc!(Op::SubAImm8);
     add_instrc!(0x09);
 
@@ -830,7 +830,7 @@ fn make_mem() -> Vec<u8> {
     // ccf
     add_instrc!(Op::Ccf);
 
-    // jr imm8
+    // jr $0x02
     add_instrc!(Op::JrImm8);
     add_instrc!(0x2);
 
