@@ -391,6 +391,35 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_cf((a_val & 0b0000_0001) != 0);
             }
+            Op::Daa => {
+                let nf = self.get_nf();
+                let a = self.af.get_hi();
+                let mut adjust = 0u8;
+
+                // check h flag
+                if self.get_hf() || (!nf && (a & 0xF) > 0x9) {
+                    adjust += 0x6;
+                }
+
+                // check c flag
+                if self.get_cf() || (!nf && a > 0x99) {
+                    adjust += 0x60;
+                }
+
+                // adjust a
+                let a = match nf {
+                    true => a.wrapping_sub(adjust),
+                    false => a.wrapping_add(adjust),
+                };
+                self.af.set_hi(a);
+
+                // set flags
+                self.set_zf(a == 0);
+                self.set_hf(false);
+                if !nf && adjust >= 0x60 {
+                    self.set_cf(true);
+                }
+            }
             Op::Stop => {
                 self.halted = true;
             }
@@ -533,6 +562,7 @@ enum Op {
     Rrca,                     // rrca
     Rla,                      // rla
     Rra,                      // rra
+    Daa,                      // daa
     Stop,                     // stop
 }
 
@@ -552,6 +582,7 @@ impl Op {
                     0b0000_1111 => Some(Self::Rrca), // rrca
                     0b0001_0111 => Some(Self::Rla),  // rla
                     0b0001_1111 => Some(Self::Rra),  // rra
+                    0b0010_0111 => Some(Self::Daa),  // daa
                     _ => None,
                 },
                 _ => match b & 0b0000_1111 {
@@ -593,6 +624,7 @@ impl Into<u8> for Op {
             Self::Rrca => 0b0000_1111,
             Self::Rla => 0b0001_0111,
             Self::Rra => 0b0001_1111,
+            Self::Daa => 0b0010_0111,
             Self::Stop => 0b0001_0000,
         }
     }
@@ -616,6 +648,7 @@ impl std::fmt::Display for Op {
             Self::Rrca => write!(f, "rrca"),
             Self::Rla => write!(f, "rla"),
             Self::Rra => write!(f, "rra"),
+            Self::Daa => write!(f, "daa"),
             Self::Stop => write!(f, "stop"),
         }
     }
