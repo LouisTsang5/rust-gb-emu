@@ -830,7 +830,13 @@ fn make_mem() -> Vec<u8> {
     // ccf
     add_instrc!(Op::Ccf);
 
+    // jr imm8
+    add_instrc!(Op::JrImm8);
+    add_instrc!(0x2);
+
     // nop
+    add_instrc!(Op::Nop);
+    add_instrc!(Op::Nop);
     add_instrc!(Op::Nop);
 
     // stop
