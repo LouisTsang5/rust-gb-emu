@@ -442,6 +442,21 @@ impl<'a> Cpu<'a> {
                 self.set_hf((lhs & 0xF) < (rhs & 0xF)); // bit 4 borrow
                 self.set_cf(lhs < rhs); // results in negative
             }
+            Op::Cpl => {
+                self.af.set_hi(!self.af.get_hi());
+                self.set_nf(true);
+                self.set_hf(true);
+            }
+            Op::Scf => {
+                self.set_nf(false);
+                self.set_hf(false);
+                self.set_cf(true);
+            }
+            Op::Ccf => {
+                self.set_nf(false);
+                self.set_hf(false);
+                self.set_cf(!self.get_cf());
+            }
             Op::Stop => {
                 self.halted = true;
             }
@@ -585,6 +600,9 @@ enum Op {
     Rla,                      // rla
     Rra,                      // rra
     Daa,                      // daa
+    Cpl,                      // cpl
+    Scf,                      // scf
+    Ccf,                      // ccf
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
     Stop,                     // stop
@@ -607,6 +625,9 @@ impl Op {
                     0b0001_0111 => Some(Self::Rla),  // rla
                     0b0001_1111 => Some(Self::Rra),  // rra
                     0b0010_0111 => Some(Self::Daa),  // daa
+                    0b0010_1111 => Some(Self::Cpl),  // cpl
+                    0b0011_0111 => Some(Self::Scf),  // scf
+                    0b0011_1111 => Some(Self::Ccf),  // ccf
                     _ => None,
                 },
                 _ => match b & 0b0000_1111 {
@@ -655,6 +676,9 @@ impl Into<u8> for Op {
             Self::Rla => 0b0001_0111,
             Self::Rra => 0b0001_1111,
             Self::Daa => 0b0010_0111,
+            Self::Cpl => 0b0010_1111,
+            Self::Scf => 0b0011_0111,
+            Self::Ccf => 0b0011_1111,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
             Self::Stop => 0b0001_0000,
@@ -681,6 +705,9 @@ impl std::fmt::Display for Op {
             Self::Rla => write!(f, "rla"),
             Self::Rra => write!(f, "rra"),
             Self::Daa => write!(f, "daa"),
+            Self::Cpl => write!(f, "cpl"),
+            Self::Scf => write!(f, "scf"),
+            Self::Ccf => write!(f, "ccf"),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Stop => write!(f, "stop"),
@@ -780,6 +807,15 @@ fn make_mem() -> Vec<u8> {
 
     // daa
     add_instrc!(Op::Daa);
+
+    // cpl
+    add_instrc!(Op::Cpl);
+
+    // scf
+    add_instrc!(Op::Scf);
+
+    // ccf
+    add_instrc!(Op::Ccf);
 
     // nop
     add_instrc!(Op::Nop);
