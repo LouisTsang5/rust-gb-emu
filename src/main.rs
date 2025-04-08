@@ -420,28 +420,6 @@ impl<'a> Cpu<'a> {
                     self.set_cf(true);
                 }
             }
-            Op::AddAImm8 => {
-                let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc() as usize];
-                let a = lhs.wrapping_add(rhs);
-                self.af.set_hi(a);
-
-                self.set_zf(a == 0);
-                self.set_nf(false);
-                self.set_hf(((lhs & 0xF) + (rhs & 0xF)) > 0xF); // bit 3 overflow
-                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
-            }
-            Op::SubAImm8 => {
-                let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc() as usize];
-                let a = lhs.wrapping_sub(rhs);
-                self.af.set_hi(a);
-
-                self.set_zf(a == 0);
-                self.set_nf(true);
-                self.set_hf((lhs & 0xF) < (rhs & 0xF)); // bit 4 borrow
-                self.set_cf(lhs < rhs); // results in negative
-            }
             Op::Cpl => {
                 self.af.set_hi(!self.af.get_hi());
                 self.set_nf(true);
@@ -468,6 +446,28 @@ impl<'a> Cpu<'a> {
             }
             Op::Stop => {
                 self.halted = true;
+            }
+            Op::AddAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc() as usize];
+                let a = lhs.wrapping_add(rhs);
+                self.af.set_hi(a);
+
+                self.set_zf(a == 0);
+                self.set_nf(false);
+                self.set_hf(((lhs & 0xF) + (rhs & 0xF)) > 0xF); // bit 3 overflow
+                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
+            }
+            Op::SubAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc() as usize];
+                let a = lhs.wrapping_sub(rhs);
+                self.af.set_hi(a);
+
+                self.set_zf(a == 0);
+                self.set_nf(true);
+                self.set_hf((lhs & 0xF) < (rhs & 0xF)); // bit 4 borrow
+                self.set_cf(lhs < rhs); // results in negative
             }
         }
     }
@@ -691,8 +691,9 @@ impl Into<u8> for Op {
             Self::Scf => 0b0011_0111,
             Self::Ccf => 0b0011_1111,
             Self::JrImm8 => 0b0001_1000,
-            Self::SubAImm8 => 0b1101_0110,
             Self::Stop => 0b0001_0000,
+            Self::AddAImm8 => 0b1100_0110,
+            Self::SubAImm8 => 0b1101_0110,
         }
     }
 }
@@ -720,8 +721,9 @@ impl std::fmt::Display for Op {
             Self::Scf => write!(f, "scf"),
             Self::Ccf => write!(f, "ccf"),
             Self::JrImm8 => write!(f, "jr imm8"),
-            Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Stop => write!(f, "stop"),
+            Self::AddAImm8 => write!(f, "add a, imm8"),
+            Self::SubAImm8 => write!(f, "sub a, imm8"),
         }
     }
 }
