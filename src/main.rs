@@ -551,7 +551,7 @@ impl Op {
                     0b0000_0111 => Some(Self::Rlca), // rlca
                     0b0000_1111 => Some(Self::Rrca), // rrca
                     0b0001_0111 => Some(Self::Rla),  // rla
-                    0b0001_1111 => Some(Self::Rra),
+                    0b0001_1111 => Some(Self::Rra),  // rra
                     _ => None,
                 },
                 _ => match b & 0b0000_1111 {
