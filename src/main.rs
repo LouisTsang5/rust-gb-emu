@@ -457,6 +457,15 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_cf(!self.get_cf());
             }
+            Op::JrImm8 => {
+                // Read next byte as 2's complement relative position
+                let n = self.mem[self.pc.post_inc() as usize];
+                let rlt = unsafe { *(&n as *const u8 as *const i8) };
+
+                // Update pc
+                let pc = self.pc.get() as i32 + rlt as i32;
+                self.pc.set(pc as u16);
+            }
             Op::Stop => {
                 self.halted = true;
             }
@@ -603,6 +612,7 @@ enum Op {
     Cpl,                      // cpl
     Scf,                      // scf
     Ccf,                      // ccf
+    JrImm8,                   // jr imm8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
     Stop,                     // stop
@@ -630,19 +640,20 @@ impl Op {
                     0b0011_1111 => Some(Self::Ccf),  // ccf
                     _ => None,
                 },
+                0b000 => match b {
+                    0b0000_0000 => Some(Self::Nop),         // nop
+                    0b0000_1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
+                    0b0001_0000 => Some(Self::Stop),        // stop
+                    0b0001_1000 => Some(Self::JrImm8),      // jr imm8,
+                    _ => None,
+                },
                 _ => match b & 0b0000_1111 {
-                    0b0000 => match (b & 0b0011_0000) >> 4 {
-                        0b00 => Some(Self::Nop),  // nop
-                        0b01 => Some(Self::Stop), // stop
-                        _ => None,
-                    },
                     0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
                     0b0010 => Some(Self::LdZR16MemZA(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld [r16mem], a
                     0b1010 => Some(Self::LdAZR16MemZ(ParamR16Mem::from((b & 0b00110000) >> 4))), // ld a, [r16mem]
                     0b0011 => Some(Self::IncR16(ParamR16::from((b & 0b00110000) >> 4))), // inc r16
                     0b1011 => Some(Self::DecR16(ParamR16::from((b & 0b00110000) >> 4))), // dec r16
                     0b1001 => Some(Self::AddHlR16(ParamR16::from((b & 0b00110000) >> 4))), // add hl, r16
-                    0b1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                     _ => None,
                 },
             },
@@ -679,7 +690,7 @@ impl Into<u8> for Op {
             Self::Cpl => 0b0010_1111,
             Self::Scf => 0b0011_0111,
             Self::Ccf => 0b0011_1111,
-            Self::AddAImm8 => 0b1100_0110,
+            Self::JrImm8 => 0b0001_1000,
             Self::SubAImm8 => 0b1101_0110,
             Self::Stop => 0b0001_0000,
         }
@@ -708,7 +719,7 @@ impl std::fmt::Display for Op {
             Self::Cpl => write!(f, "cpl"),
             Self::Scf => write!(f, "scf"),
             Self::Ccf => write!(f, "ccf"),
-            Self::AddAImm8 => write!(f, "add a, imm8"),
+            Self::JrImm8 => write!(f, "jr imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Stop => write!(f, "stop"),
         }
