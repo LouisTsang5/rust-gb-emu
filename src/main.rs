@@ -470,6 +470,31 @@ impl<'a> Cpu<'a> {
                 // TODO: place holder
                 self.halted = true;
             }
+            Op::LdR8R8(dest, src) => {
+                // Read val
+                let val = match src {
+                    ParamR8::A => self.af.get_hi(),
+                    ParamR8::B => self.bc.get_hi(),
+                    ParamR8::C => self.bc.get_lo(),
+                    ParamR8::D => self.de.get_hi(),
+                    ParamR8::E => self.de.get_lo(),
+                    ParamR8::H => self.hl.get_hi(),
+                    ParamR8::L => self.hl.get_lo(),
+                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                };
+
+                // Set val
+                match dest {
+                    ParamR8::A => self.af.set_hi(val),
+                    ParamR8::B => self.bc.set_hi(val),
+                    ParamR8::C => self.bc.set_lo(val),
+                    ParamR8::D => self.de.set_hi(val),
+                    ParamR8::E => self.de.set_lo(val),
+                    ParamR8::H => self.hl.set_hi(val),
+                    ParamR8::L => self.hl.set_lo(val),
+                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize] = val,
+                };
+            }
             Op::Halt => {
                 // TODO: place holder
                 self.halted = true;
@@ -677,6 +702,7 @@ enum Op {
     JrImm8,                   // jr imm8
     JrCcImm8(ParamCond),      // jr cc, imm8
     Stop,                     // stop
+    LdR8R8(ParamR8, ParamR8), //ld r8, r8
     Halt,                     // halt
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
@@ -727,7 +753,10 @@ impl Op {
             // Block 1:
             0b01 => match b {
                 0b0111_0110 => Some(Self::Halt),
-                _ => None,
+                _ => Some(Self::LdR8R8(
+                    ParamR8::from((b & 0b0011_1000) >> 3),
+                    ParamR8::from(b & 0b0000_0111),
+                )),
             },
             // Block 3:
             0b11 => match b {
@@ -765,6 +794,7 @@ impl Into<u8> for Op {
             Self::JrImm8 => 0b0001_1000,
             Self::JrCcImm8(param) => 0b0010_0000 | (param as u8) << 3,
             Self::Stop => 0b0001_0000,
+            Self::LdR8R8(dest, src) => 0b0100_0000 | (dest as u8) << 3 | src as u8,
             Self::Halt => 0b0111_0110,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
@@ -797,6 +827,7 @@ impl std::fmt::Display for Op {
             Self::JrImm8 => write!(f, "jr imm8"),
             Self::JrCcImm8(param) => write!(f, "jr {}, imm8", param),
             Self::Stop => write!(f, "stop"),
+            Self::LdR8R8(dest, src) => write!(f, "ld {}, {}", dest, src),
             Self::Halt => write!(f, "halt"),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
@@ -919,6 +950,9 @@ fn make_mem() -> Vec<u8> {
     // jr nc $-0x2
     add_instrc!(Op::JrCcImm8(ParamCond::Nc));
     add_instrc!(0u8.wrapping_sub(0x4));
+
+    // ld [hl], l
+    add_instrc!(Op::LdR8R8(ParamR8::ZHLZ, ParamR8::L));
 
     // nop
     add_instrc!(Op::Nop);
