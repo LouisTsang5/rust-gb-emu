@@ -737,6 +737,7 @@ fn make_mem() -> Vec<u8> {
 
     macro_rules! add_instrc {
         ($x: expr) => {
+            assert!(i_instr < INSTC_END);
             mem[i_instr] = $x.into();
             i_instr += 1;
         };
@@ -744,6 +745,7 @@ fn make_mem() -> Vec<u8> {
 
     macro_rules! add_data {
         ($x: expr) => {
+            assert!(i_data < MEM_SIZE);
             mem[i_data] = $x;
             i_data += 1;
         };
