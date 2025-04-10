@@ -444,6 +444,28 @@ impl<'a> Cpu<'a> {
                 let pc = self.pc.get() as i32 + rlt as i32;
                 self.pc.set(pc as u16);
             }
+            Op::JrCcImm8(cond) => {
+                // Read next byte
+                let n = self.mem[self.pc.post_inc() as usize];
+
+                // Check condition
+                let is_jp = match cond {
+                    ParamCond::C => self.get_cf(),
+                    ParamCond::Nc => !self.get_cf(),
+                    ParamCond::Z => self.get_zf(),
+                    ParamCond::Nz => !self.get_zf(),
+                };
+
+                // Jmp if cond is met
+                if is_jp {
+                    // relative position in 2's complement
+                    let rlt = unsafe { *(&n as *const u8 as *const i8) };
+
+                    // Update pc
+                    let pc = self.pc.get() as i32 + rlt as i32;
+                    self.pc.set(pc as u16);
+                }
+            }
             Op::Stop => {
                 self.halted = true;
             }
@@ -590,6 +612,41 @@ impl std::fmt::Display for ParamR16Mem {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ParamCond {
+    Nz = 0b00,
+    Z = 0b01,
+    Nc = 0b10,
+    C = 0b11,
+}
+
+impl From<u8> for ParamCond {
+    fn from(value: u8) -> Self {
+        match value {
+            0b00 => Self::Nz,
+            0b01 => Self::Z,
+            0b10 => Self::Nc,
+            0b11 => Self::C,
+            _ => panic!("Invalid cond param {:#X}", value),
+        }
+    }
+}
+
+impl std::fmt::Display for ParamCond {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Nz => "nz",
+                Self::Z => "z",
+                Self::Nc => "nc",
+                Self::C => "c",
+            }
+        )
+    }
+}
+
 // Z = []
 #[derive(Debug)]
 enum Op {
@@ -613,6 +670,7 @@ enum Op {
     Scf,                      // scf
     Ccf,                      // ccf
     JrImm8,                   // jr imm8
+    JrCcImm8(ParamCond),      // jr cc, imm8
     Stop,                     // stop
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
@@ -645,7 +703,10 @@ impl Op {
                     0b0000_1000 => Some(Self::LdZImm16ZSp), // ld [imm16], sp
                     0b0001_0000 => Some(Self::Stop),        // stop
                     0b0001_1000 => Some(Self::JrImm8),      // jr imm8,
-                    _ => None,
+                    _ => match (b & 0b0010_0000) == 0b0010_0000 {
+                        true => Some(Self::JrCcImm8(ParamCond::from((b & 0b0001_1000) >> 3))), // jr cc, imm8
+                        false => None,
+                    },
                 },
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::LdR16Imm16(ParamR16::from((b & 0b00110000) >> 4))), // ld r16, imm16
@@ -691,6 +752,7 @@ impl Into<u8> for Op {
             Self::Scf => 0b0011_0111,
             Self::Ccf => 0b0011_1111,
             Self::JrImm8 => 0b0001_1000,
+            Self::JrCcImm8(param) => 0b0010_0000 | (param as u8) << 3,
             Self::Stop => 0b0001_0000,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
@@ -721,6 +783,7 @@ impl std::fmt::Display for Op {
             Self::Scf => write!(f, "scf"),
             Self::Ccf => write!(f, "ccf"),
             Self::JrImm8 => write!(f, "jr imm8"),
+            Self::JrCcImm8(param) => write!(f, "jr {}, imm8", param),
             Self::Stop => write!(f, "stop"),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
@@ -836,9 +899,15 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(Op::JrImm8);
     add_instrc!(0x2);
 
+    // jr nz $0x2
+    add_instrc!(Op::JrCcImm8(ParamCond::Nz));
+    add_instrc!(0x2);
+
+    // jr nc $-0x2
+    add_instrc!(Op::JrCcImm8(ParamCond::Nc));
+    add_instrc!(0u8.wrapping_sub(0x4));
+
     // nop
-    add_instrc!(Op::Nop);
-    add_instrc!(Op::Nop);
     add_instrc!(Op::Nop);
 
     // stop
