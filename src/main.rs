@@ -467,6 +467,11 @@ impl<'a> Cpu<'a> {
                 }
             }
             Op::Stop => {
+                // TODO: place holder
+                self.halted = true;
+            }
+            Op::Halt => {
+                // TODO: place holder
                 self.halted = true;
             }
             Op::AddAImm8 => {
@@ -672,6 +677,7 @@ enum Op {
     JrImm8,                   // jr imm8
     JrCcImm8(ParamCond),      // jr cc, imm8
     Stop,                     // stop
+    Halt,                     // halt
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
 }
@@ -718,6 +724,11 @@ impl Op {
                     _ => None,
                 },
             },
+            // Block 1:
+            0b01 => match b {
+                0b0111_0110 => Some(Self::Halt),
+                _ => None,
+            },
             // Block 3:
             0b11 => match b {
                 0b1100_0110 => Some(Self::AddAImm8),
@@ -754,6 +765,7 @@ impl Into<u8> for Op {
             Self::JrImm8 => 0b0001_1000,
             Self::JrCcImm8(param) => 0b0010_0000 | (param as u8) << 3,
             Self::Stop => 0b0001_0000,
+            Self::Halt => 0b0111_0110,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
         }
@@ -785,6 +797,7 @@ impl std::fmt::Display for Op {
             Self::JrImm8 => write!(f, "jr imm8"),
             Self::JrCcImm8(param) => write!(f, "jr {}, imm8", param),
             Self::Stop => write!(f, "stop"),
+            Self::Halt => write!(f, "halt"),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
         }
@@ -911,7 +924,7 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(Op::Nop);
 
     // stop
-    add_instrc!(Op::Stop);
+    add_instrc!(Op::Halt);
 
     // Set free mem values
     add_data!(0xFF);
