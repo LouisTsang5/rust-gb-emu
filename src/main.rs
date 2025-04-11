@@ -702,7 +702,7 @@ enum Op {
     JrImm8,                   // jr imm8
     JrCcImm8(ParamCond),      // jr cc, imm8
     Stop,                     // stop
-    LdR8R8(ParamR8, ParamR8), //ld r8, r8
+    LdR8R8(ParamR8, ParamR8), // ld r8, r8
     Halt,                     // halt
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
