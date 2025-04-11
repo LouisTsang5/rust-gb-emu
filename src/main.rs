@@ -706,6 +706,10 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
             }
+            Op::Ret => {
+                self.pc.set_lo(self.mem[self.sp.post_inc()]);
+                self.pc.set_hi(self.mem[self.sp.post_inc()]);
+            }
             Op::Pop(param) => {
                 let r = match param {
                     ParamR16Stk::AF => &mut self.af,
@@ -954,6 +958,7 @@ enum Op {
     CpAR8(ParamR8),           // cp a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
+    Ret,                      // ret
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
 }
@@ -1024,6 +1029,7 @@ impl Op {
             0b11 => match b {
                 0b1100_0110 => Some(Self::AddAImm8),
                 0b1101_0110 => Some(Self::SubAImm8),
+                0b1100_1001 => Some(Self::Ret),
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
@@ -1072,6 +1078,7 @@ impl From<Op> for u8 {
             Op::CpAR8(param) => 0b1011_1000 | param as u8,
             Op::AddAImm8 => 0b1100_0110,
             Op::SubAImm8 => 0b1101_0110,
+            Op::Ret => 0b1100_1001,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
         }
@@ -1115,6 +1122,7 @@ impl std::fmt::Display for Op {
             Self::CpAR8(param) => write!(f, "cp a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
+            Self::Ret => write!(f, "ret"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
         }
