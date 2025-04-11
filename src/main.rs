@@ -499,6 +499,26 @@ impl<'a> Cpu<'a> {
                 // TODO: place holder
                 self.halted = true;
             }
+            Op::AddAR8(param) => {
+                let lhs = self.af.get_hi();
+                let rhs = match param {
+                    ParamR8::A => self.af.get_hi(),
+                    ParamR8::B => self.bc.get_hi(),
+                    ParamR8::C => self.bc.get_lo(),
+                    ParamR8::D => self.de.get_hi(),
+                    ParamR8::E => self.de.get_lo(),
+                    ParamR8::H => self.hl.get_hi(),
+                    ParamR8::L => self.hl.get_lo(),
+                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                };
+                let val = lhs.wrapping_add(rhs);
+
+                self.af.set_hi(val);
+                self.set_zf(val == 0);
+                self.set_nf(false);
+                self.set_hf(((lhs & 0x0F) + (rhs & 0x0F)) > 0x0F); // bit 3 overflow
+                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
+            }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc() as usize];
@@ -704,6 +724,7 @@ enum Op {
     Stop,                     // stop
     LdR8R8(ParamR8, ParamR8), // ld r8, r8
     Halt,                     // halt
+    AddAR8(ParamR8),          // add a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
 }
@@ -758,6 +779,11 @@ impl Op {
                     ParamR8::from(b & 0b0000_0111),
                 )),
             },
+            // Block 2:
+            0b10 => match (b & 0b0011_1000) >> 3 {
+                0b000 => Some(Self::AddAR8(ParamR8::from(b & 0b0000_0111))),
+                _ => None,
+            },
             // Block 3:
             0b11 => match b {
                 0b1100_0110 => Some(Self::AddAImm8),
@@ -796,6 +822,7 @@ impl Into<u8> for Op {
             Self::Stop => 0b0001_0000,
             Self::LdR8R8(dest, src) => 0b0100_0000 | (dest as u8) << 3 | src as u8,
             Self::Halt => 0b0111_0110,
+            Self::AddAR8(param) => 0b1000_0000 | param as u8,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
         }
@@ -829,6 +856,7 @@ impl std::fmt::Display for Op {
             Self::Stop => write!(f, "stop"),
             Self::LdR8R8(dest, src) => write!(f, "ld {}, {}", dest, src),
             Self::Halt => write!(f, "halt"),
+            Self::AddAR8(param) => write!(f, "add a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
         }
@@ -953,6 +981,9 @@ fn make_mem() -> Vec<u8> {
 
     // ld [hl], l
     add_instrc!(Op::LdR8R8(ParamR8::ZHLZ, ParamR8::L));
+
+    // add a, l
+    add_instrc!(Op::AddAR8(ParamR8::L));
 
     // nop
     add_instrc!(Op::Nop);
