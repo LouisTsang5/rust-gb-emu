@@ -696,6 +696,17 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
             }
+            Op::Push(param) => {
+                let r = match param {
+                    ParamR16Stk::AF => &self.af,
+                    ParamR16Stk::BC => &self.bc,
+                    ParamR16Stk::DE => &self.de,
+                    ParamR16Stk::HL => &self.hl,
+                };
+                self.mem[self.sp.get() as usize - 1] = r.get_hi();
+                self.mem[self.sp.get() as usize - 2] = r.get_lo();
+                self.sp.set(self.sp.get().wrapping_sub(2));
+            }
         }
     }
 }
@@ -777,6 +788,41 @@ impl std::fmt::Display for ParamR16 {
                 Self::DE => "de",
                 Self::HL => "hl",
                 Self::SP => "sp",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ParamR16Stk {
+    BC = 0b00,
+    DE = 0b01,
+    HL = 0b10,
+    AF = 0b11,
+}
+
+impl From<u8> for ParamR16Stk {
+    fn from(value: u8) -> Self {
+        match value {
+            0b00 => Self::BC,
+            0b01 => Self::DE,
+            0b10 => Self::HL,
+            0b11 => Self::AF,
+            _ => panic!("Invalid r16stk param {:#X}", value),
+        }
+    }
+}
+
+impl std::fmt::Display for ParamR16Stk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::BC => "bc",
+                Self::DE => "de",
+                Self::HL => "hl",
+                Self::AF => "af",
             }
         )
     }
@@ -889,6 +935,7 @@ enum Op {
     CpAR8(ParamR8),           // cp a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
+    Push(ParamR16Stk),        // push r16stk
 }
 
 impl Op {
@@ -957,7 +1004,10 @@ impl Op {
             0b11 => match b {
                 0b1100_0110 => Some(Self::AddAImm8),
                 0b1101_0110 => Some(Self::SubAImm8),
-                _ => None,
+                _ => match b & 0b0000_1111 {
+                    0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
+                    _ => None,
+                },
             },
             _ => None,
         }
@@ -1001,6 +1051,7 @@ impl Into<u8> for Op {
             Self::CpAR8(param) => 0b1011_1000 | param as u8,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
+            Self::Push(param) => 0b1100_0101 | (param as u8) << 4,
         }
     }
 }
@@ -1042,6 +1093,7 @@ impl std::fmt::Display for Op {
             Self::CpAR8(param) => write!(f, "cp a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
+            Self::Push(param) => write!(f, "push {}", param),
         }
     }
 }
@@ -1203,6 +1255,14 @@ fn make_mem() -> Vec<u8> {
 
     // cp a, c
     add_instrc!(Op::CpAR8(ParamR8::C));
+
+    // ld sp, MEM_SIZE
+    add_instrc!(Op::LdR16Imm16(ParamR16::SP));
+    add_instrc!(MEM_SIZE.to_le_bytes()[0]);
+    add_instrc!(MEM_SIZE.to_le_bytes()[1]);
+
+    // push af
+    add_instrc!(Op::Push(ParamR16Stk::AF));
 
     // nop
     add_instrc!(Op::Nop);
