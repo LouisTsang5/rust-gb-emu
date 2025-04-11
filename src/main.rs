@@ -656,6 +656,24 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_cf(false);
             }
+            Op::CpAR8(param) => {
+                let lhs = self.af.get_hi();
+                let rhs = match param {
+                    ParamR8::A => self.af.get_hi(),
+                    ParamR8::B => self.bc.get_hi(),
+                    ParamR8::C => self.bc.get_lo(),
+                    ParamR8::D => self.de.get_hi(),
+                    ParamR8::E => self.de.get_lo(),
+                    ParamR8::H => self.hl.get_hi(),
+                    ParamR8::L => self.hl.get_lo(),
+                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                };
+                let (val, cf) = lhs.overflowing_sub(rhs);
+                self.set_zf(val == 0);
+                self.set_nf(true);
+                self.set_hf(hf_sub(lhs, rhs));
+                self.set_cf(cf);
+            }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc() as usize];
@@ -868,6 +886,7 @@ enum Op {
     AndAR8(ParamR8),          // and a, r8
     XorAR8(ParamR8),          // xor a, r8
     OrAR8(ParamR8),           // or a, r8
+    CpAR8(ParamR8),           // cp a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
 }
@@ -931,6 +950,7 @@ impl Op {
                 0b100 => Some(Self::AndAR8(ParamR8::from(b & 0b0000_0111))),
                 0b101 => Some(Self::XorAR8(ParamR8::from(b & 0b0000_0111))),
                 0b110 => Some(Self::OrAR8(ParamR8::from(b & 0b0000_0111))),
+                0b111 => Some(Self::CpAR8(ParamR8::from(b & 0b0000_0111))),
                 _ => None,
             },
             // Block 3:
@@ -978,6 +998,7 @@ impl Into<u8> for Op {
             Self::AndAR8(param) => 0b1010_0000 | param as u8,
             Self::XorAR8(param) => 0b1010_1000 | param as u8,
             Self::OrAR8(param) => 0b1011_0000 | param as u8,
+            Self::CpAR8(param) => 0b1011_1000 | param as u8,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
         }
@@ -1018,6 +1039,7 @@ impl std::fmt::Display for Op {
             Self::AndAR8(param) => write!(f, "and a, {}", param),
             Self::XorAR8(param) => write!(f, "xor a, {}", param),
             Self::OrAR8(param) => write!(f, "or a, {}", param),
+            Self::CpAR8(param) => write!(f, "cp a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
         }
@@ -1175,6 +1197,12 @@ fn make_mem() -> Vec<u8> {
 
     // or a, a
     add_instrc!(Op::OrAR8(ParamR8::A));
+
+    // ld a, c
+    add_instrc!(Op::LdR8R8(ParamR8::A, ParamR8::C));
+
+    // cp a, c
+    add_instrc!(Op::CpAR8(ParamR8::C));
 
     // nop
     add_instrc!(Op::Nop);
