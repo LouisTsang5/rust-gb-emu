@@ -34,6 +34,12 @@ impl Reg16 {
         retval as usize
     }
 
+    fn pre_dec(&mut self) -> usize {
+        let retval = self.get().wrapping_sub(1);
+        self.set(retval);
+        retval as usize
+    }
+
     fn as_idx(&self) -> usize {
         self.get() as usize
     }
@@ -707,9 +713,8 @@ impl<'a> Cpu<'a> {
                     ParamR16Stk::DE => &mut self.de,
                     ParamR16Stk::HL => &mut self.hl,
                 };
-                r.set_lo(self.mem[self.sp.as_idx()]);
-                r.set_hi(self.mem[self.sp.as_idx() + 1]);
-                self.sp.set(self.sp.get().wrapping_add(2));
+                r.set_lo(self.mem[self.sp.post_inc()]);
+                r.set_hi(self.mem[self.sp.post_inc()]);
             }
             Op::Push(param) => {
                 let r = match param {
@@ -718,9 +723,8 @@ impl<'a> Cpu<'a> {
                     ParamR16Stk::DE => &self.de,
                     ParamR16Stk::HL => &self.hl,
                 };
-                self.mem[self.sp.as_idx() - 1] = r.get_hi();
-                self.mem[self.sp.as_idx() - 2] = r.get_lo();
-                self.sp.set(self.sp.get().wrapping_sub(2));
+                self.mem[self.sp.pre_dec()] = r.get_hi();
+                self.mem[self.sp.pre_dec()] = r.get_lo();
             }
         }
     }
