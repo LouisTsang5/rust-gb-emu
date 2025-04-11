@@ -1203,8 +1203,15 @@ fn main() {
 
     // Print result
     cpu.print_reg();
-    for b in &mem {
-        print!("0x{:02X} ", b);
+    for (i, &b) in mem.iter().enumerate() {
+        print!(
+            "0x{:02X}{}",
+            b,
+            match (i + 1) % 16 == 0 {
+                true => '\n',
+                false => ' ',
+            }
+        );
     }
     println!("");
 }
