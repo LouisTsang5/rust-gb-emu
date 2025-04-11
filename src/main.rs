@@ -78,6 +78,16 @@ macro_rules! flag_fns {
     };
 }
 
+#[doc = "if lhs add rhs will overflow from bit 3 to bit 4"]
+fn hf_add(lhs: u8, rhs: u8) -> bool {
+    ((lhs & 0x0Fu8) + (rhs & 0x0Fu8)) > 0x0Fu8
+}
+
+#[doc = "if lhs sub rhs will borrow from bit 4 to bit 3"]
+fn hf_sub(lhs: u8, rhs: u8) -> bool {
+    (lhs & 0x0Fu8) < (rhs & 0x0Fu8)
+}
+
 impl<'a> Cpu<'a> {
     flag_fns! {
         get_zf => set_zf => 7, // Zero Flag 0b1000_0000
@@ -243,12 +253,13 @@ impl<'a> Cpu<'a> {
                 };
 
                 // Addition
-                self.hl.set(hl_val.wrapping_add(add_num));
+                let (val, cf) = hl_val.overflowing_add(add_num);
+                self.hl.set(val);
 
                 // Set flags
                 self.set_nf(false); // sub flag
                 self.set_hf(((hl_val & 0x0FFF) + (add_num & 0x0FFF)) > 0x0FFF); // 12th bit overflow
-                self.set_cf((0xFFFFu16 - add_num) < hl_val); // 16th bit overflow
+                self.set_cf(cf); // 16th bit overflow
             }
             Op::IncR8(param) => {
                 // Read the byte
@@ -279,7 +290,7 @@ impl<'a> Cpu<'a> {
                 // Set Flags
                 self.set_zf(new_val == 0);
                 self.set_nf(false);
-                self.set_hf((old_val & 0x0F) == 0x0F); // 4th bit overflow
+                self.set_hf(hf_add(old_val, 1)); // 4th bit overflow
             }
             Op::DecR8(param) => {
                 // Read the byte
@@ -310,7 +321,7 @@ impl<'a> Cpu<'a> {
                 // Set Flags
                 self.set_zf(new_val == 0);
                 self.set_nf(true);
-                self.set_hf((old_val & 0x0F) == 0x00); // 5th bit borrow
+                self.set_hf(hf_sub(old_val, 1)); // 5th bit borrow
             }
             Op::LdR8Imm8(param) => {
                 let val = self.mem[self.pc.post_inc() as usize];
@@ -511,35 +522,35 @@ impl<'a> Cpu<'a> {
                     ParamR8::L => self.hl.get_lo(),
                     ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
                 };
-                let val = lhs.wrapping_add(rhs);
+                let (a, cf) = lhs.overflowing_add(rhs);
 
-                self.af.set_hi(val);
-                self.set_zf(val == 0);
+                self.af.set_hi(a);
+                self.set_zf(a == 0);
                 self.set_nf(false);
-                self.set_hf(((lhs & 0x0F) + (rhs & 0x0F)) > 0x0F); // bit 3 overflow
-                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
+                self.set_hf(hf_add(lhs, rhs));
+                self.set_cf(cf);
             }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc() as usize];
-                let a = lhs.wrapping_add(rhs);
-                self.af.set_hi(a);
+                let (a, cf) = lhs.overflowing_add(rhs);
 
+                self.af.set_hi(a);
                 self.set_zf(a == 0);
                 self.set_nf(false);
-                self.set_hf(((lhs & 0xF) + (rhs & 0xF)) > 0xF); // bit 3 overflow
-                self.set_cf((0xFF - lhs) < rhs); // bit 7 overflow
+                self.set_hf(hf_add(lhs, rhs));
+                self.set_cf(cf);
             }
             Op::SubAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc() as usize];
-                let a = lhs.wrapping_sub(rhs);
-                self.af.set_hi(a);
+                let (a, cf) = lhs.overflowing_sub(rhs);
 
+                self.af.set_hi(a);
                 self.set_zf(a == 0);
                 self.set_nf(true);
-                self.set_hf((lhs & 0xF) < (rhs & 0xF)); // bit 4 borrow
-                self.set_cf(lhs < rhs); // results in negative
+                self.set_hf(hf_sub(lhs, rhs));
+                self.set_cf(cf);
             }
         }
     }
