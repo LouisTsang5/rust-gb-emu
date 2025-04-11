@@ -696,6 +696,17 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
             }
+            Op::Pop(param) => {
+                let r = match param {
+                    ParamR16Stk::AF => &mut self.af,
+                    ParamR16Stk::BC => &mut self.bc,
+                    ParamR16Stk::DE => &mut self.de,
+                    ParamR16Stk::HL => &mut self.hl,
+                };
+                r.set_lo(self.mem[self.sp.get() as usize]);
+                r.set_hi(self.mem[self.sp.get() as usize + 1]);
+                self.sp.set(self.sp.get().wrapping_add(2));
+            }
             Op::Push(param) => {
                 let r = match param {
                     ParamR16Stk::AF => &self.af,
@@ -935,6 +946,7 @@ enum Op {
     CpAR8(ParamR8),           // cp a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
+    Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
 }
 
@@ -1005,6 +1017,7 @@ impl Op {
                 0b1100_0110 => Some(Self::AddAImm8),
                 0b1101_0110 => Some(Self::SubAImm8),
                 _ => match b & 0b0000_1111 {
+                    0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     _ => None,
                 },
@@ -1051,6 +1064,7 @@ impl Into<u8> for Op {
             Self::CpAR8(param) => 0b1011_1000 | param as u8,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
+            Self::Pop(param) => 0b1100_0001 | (param as u8) << 4,
             Self::Push(param) => 0b1100_0101 | (param as u8) << 4,
         }
     }
@@ -1093,6 +1107,7 @@ impl std::fmt::Display for Op {
             Self::CpAR8(param) => write!(f, "cp a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
+            Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
         }
     }
@@ -1263,6 +1278,9 @@ fn make_mem() -> Vec<u8> {
 
     // push af
     add_instrc!(Op::Push(ParamR16Stk::AF));
+
+    // pop bc
+    add_instrc!(Op::Pop(ParamR16Stk::BC));
 
     // nop
     add_instrc!(Op::Nop);
