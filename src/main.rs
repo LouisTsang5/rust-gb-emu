@@ -28,10 +28,14 @@ impl Reg16 {
         self.0[1] = val;
     }
 
-    fn post_inc(&mut self) -> u16 {
+    fn post_inc(&mut self) -> usize {
         let retval = self.get();
         self.set(retval.wrapping_add(1));
-        retval
+        retval as usize
+    }
+
+    fn as_idx(&self) -> usize {
+        self.get() as usize
     }
 }
 
@@ -146,7 +150,7 @@ impl<'a> Cpu<'a> {
 
     fn step(&mut self) {
         // Fetch
-        let byte = self.mem[self.pc.post_inc() as usize];
+        let byte = self.mem[self.pc.post_inc()];
 
         // Decode
         let op = match Op::try_from(byte) {
@@ -167,8 +171,8 @@ impl<'a> Cpu<'a> {
             Op::Nop => {}
             Op::LdR16Imm16(param) => {
                 // Read 2 bytes
-                let first = self.mem[self.pc.post_inc() as usize];
-                let second = self.mem[self.pc.post_inc() as usize];
+                let first = self.mem[self.pc.post_inc()];
+                let second = self.mem[self.pc.post_inc()];
 
                 // Write to register
                 match param {
@@ -182,13 +186,13 @@ impl<'a> Cpu<'a> {
             Op::LdZR16MemZA(param) => {
                 // Load index
                 let idx = match param {
-                    ParamR16Mem::BC => self.bc.get(),
-                    ParamR16Mem::DE => self.de.get(),
-                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.get(),
+                    ParamR16Mem::BC => self.bc.as_idx(),
+                    ParamR16Mem::DE => self.de.as_idx(),
+                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.as_idx(),
                 };
 
                 // Write a to addr
-                self.mem[idx as usize] = self.af.get_hi();
+                self.mem[idx] = self.af.get_hi();
 
                 // Increment or decrement hl
                 match param {
@@ -200,13 +204,13 @@ impl<'a> Cpu<'a> {
             Op::LdAZR16MemZ(param) => {
                 // Load index
                 let idx = match param {
-                    ParamR16Mem::BC => self.bc.get(),
-                    ParamR16Mem::DE => self.de.get(),
-                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.get(),
+                    ParamR16Mem::BC => self.bc.as_idx(),
+                    ParamR16Mem::DE => self.de.as_idx(),
+                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.as_idx(),
                 };
 
                 // Write byte pointed to a
-                self.af.set_hi(self.mem[idx as usize]);
+                self.af.set_hi(self.mem[idx]);
 
                 // Increment or decrement hl
                 match param {
@@ -217,13 +221,13 @@ impl<'a> Cpu<'a> {
             }
             Op::LdZImm16ZSp => {
                 // Read next 2 bytes
-                let first = self.mem[self.pc.post_inc() as usize];
-                let second = self.mem[self.pc.post_inc() as usize];
-                let idx = u16::from_le_bytes([first, second]);
+                let first = self.mem[self.pc.post_inc()];
+                let second = self.mem[self.pc.post_inc()];
+                let idx = u16::from_le_bytes([first, second]) as usize;
 
                 // Use it as index to write val of sp
-                self.mem[idx as usize] = self.sp.get_lo();
-                self.mem[idx as usize + 1] = self.sp.get_hi();
+                self.mem[idx] = self.sp.get_lo();
+                self.mem[idx + 1] = self.sp.get_hi();
             }
             Op::IncR16(param) => {
                 let r = match param {
@@ -271,7 +275,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
 
                 // Write the byte
@@ -284,7 +288,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.set_lo(new_val),
                     ParamR8::H => self.hl.set_hi(new_val),
                     ParamR8::L => self.hl.set_lo(new_val),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize] = new_val,
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = new_val,
                 };
 
                 // Set Flags
@@ -302,7 +306,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
 
                 // Write the byte
@@ -315,7 +319,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.set_lo(new_val),
                     ParamR8::H => self.hl.set_hi(new_val),
                     ParamR8::L => self.hl.set_lo(new_val),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize] = new_val,
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = new_val,
                 };
 
                 // Set Flags
@@ -324,7 +328,7 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(old_val, 1)); // 5th bit borrow
             }
             Op::LdR8Imm8(param) => {
-                let val = self.mem[self.pc.post_inc() as usize];
+                let val = self.mem[self.pc.post_inc()];
                 match param {
                     ParamR8::A => self.af.set_hi(val),
                     ParamR8::B => self.bc.set_hi(val),
@@ -333,7 +337,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.set_lo(val),
                     ParamR8::H => self.hl.set_hi(val),
                     ParamR8::L => self.hl.set_lo(val),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize] = val,
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = val,
                 };
             }
             Op::Rlca => {
@@ -448,7 +452,7 @@ impl<'a> Cpu<'a> {
             }
             Op::JrImm8 => {
                 // Read next byte as 2's complement relative position
-                let n = self.mem[self.pc.post_inc() as usize];
+                let n = self.mem[self.pc.post_inc()];
                 let rlt = unsafe { *(&n as *const u8 as *const i8) };
 
                 // Update pc
@@ -457,7 +461,7 @@ impl<'a> Cpu<'a> {
             }
             Op::JrCcImm8(cond) => {
                 // Read next byte
-                let n = self.mem[self.pc.post_inc() as usize];
+                let n = self.mem[self.pc.post_inc()];
 
                 // Check condition
                 let is_jp = match cond {
@@ -491,7 +495,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
 
                 // Set val
@@ -503,7 +507,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.set_lo(val),
                     ParamR8::H => self.hl.set_hi(val),
                     ParamR8::L => self.hl.set_lo(val),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize] = val,
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = val,
                 };
             }
             Op::Halt => {
@@ -520,7 +524,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let (a, cf) = lhs.overflowing_add(rhs);
 
@@ -540,7 +544,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let carry = match self.get_cf() {
                     true => 1,
@@ -564,7 +568,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let (a, cf) = lhs.overflowing_sub(rhs);
 
@@ -584,7 +588,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let carry = match self.get_cf() {
                     true => 1,
@@ -609,7 +613,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let a = lhs & rhs;
                 self.af.set_hi(a);
@@ -628,7 +632,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let a = lhs ^ rhs;
                 self.af.set_hi(a);
@@ -647,7 +651,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let a = lhs | rhs;
                 self.af.set_hi(a);
@@ -666,7 +670,7 @@ impl<'a> Cpu<'a> {
                     ParamR8::E => self.de.get_lo(),
                     ParamR8::H => self.hl.get_hi(),
                     ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
                 };
                 let (val, cf) = lhs.overflowing_sub(rhs);
                 self.set_zf(val == 0);
@@ -676,7 +680,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc() as usize];
+                let rhs = self.mem[self.pc.post_inc()];
                 let (a, cf) = lhs.overflowing_add(rhs);
 
                 self.af.set_hi(a);
@@ -687,7 +691,7 @@ impl<'a> Cpu<'a> {
             }
             Op::SubAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc() as usize];
+                let rhs = self.mem[self.pc.post_inc()];
                 let (a, cf) = lhs.overflowing_sub(rhs);
 
                 self.af.set_hi(a);
@@ -703,8 +707,8 @@ impl<'a> Cpu<'a> {
                     ParamR16Stk::DE => &mut self.de,
                     ParamR16Stk::HL => &mut self.hl,
                 };
-                r.set_lo(self.mem[self.sp.get() as usize]);
-                r.set_hi(self.mem[self.sp.get() as usize + 1]);
+                r.set_lo(self.mem[self.sp.as_idx()]);
+                r.set_hi(self.mem[self.sp.as_idx() + 1]);
                 self.sp.set(self.sp.get().wrapping_add(2));
             }
             Op::Push(param) => {
@@ -714,8 +718,8 @@ impl<'a> Cpu<'a> {
                     ParamR16Stk::DE => &self.de,
                     ParamR16Stk::HL => &self.hl,
                 };
-                self.mem[self.sp.get() as usize - 1] = r.get_hi();
-                self.mem[self.sp.get() as usize - 2] = r.get_lo();
+                self.mem[self.sp.as_idx() - 1] = r.get_hi();
+                self.mem[self.sp.as_idx() - 2] = r.get_lo();
                 self.sp.set(self.sp.get().wrapping_sub(2));
             }
         }
