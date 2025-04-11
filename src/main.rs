@@ -599,6 +599,25 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(lhs, rhs) || hf_sub(a1, carry));
                 self.set_cf(c1 || c2);
             }
+            Op::AndAR8(param) => {
+                let lhs = self.af.get_hi();
+                let rhs = match param {
+                    ParamR8::A => self.af.get_hi(),
+                    ParamR8::B => self.bc.get_hi(),
+                    ParamR8::C => self.bc.get_lo(),
+                    ParamR8::D => self.de.get_hi(),
+                    ParamR8::E => self.de.get_lo(),
+                    ParamR8::H => self.hl.get_hi(),
+                    ParamR8::L => self.hl.get_lo(),
+                    ParamR8::ZHLZ => self.mem[self.hl.get() as usize],
+                };
+                let a = lhs & rhs;
+                self.af.set_hi(a);
+                self.set_zf(a == 0);
+                self.set_nf(false);
+                self.set_hf(true);
+                self.set_cf(false);
+            }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc() as usize];
@@ -808,6 +827,7 @@ enum Op {
     AdcAR8(ParamR8),          // adc a, r8
     SubAR8(ParamR8),          // sub a, r8
     SbcAR8(ParamR8),          // sbc a, r8
+    AndAR8(ParamR8),          // and a, r8
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
 }
@@ -868,6 +888,7 @@ impl Op {
                 0b001 => Some(Self::AdcAR8(ParamR8::from(b & 0b0000_0111))),
                 0b010 => Some(Self::SubAR8(ParamR8::from(b & 0b0000_0111))),
                 0b011 => Some(Self::SbcAR8(ParamR8::from(b & 0b0000_0111))),
+                0b100 => Some(Self::AndAR8(ParamR8::from(b & 0b0000_0111))),
                 _ => None,
             },
             // Block 3:
@@ -912,6 +933,7 @@ impl Into<u8> for Op {
             Self::AdcAR8(param) => 0b1000_1000 | param as u8,
             Self::SubAR8(param) => 0b1001_0000 | param as u8,
             Self::SbcAR8(param) => 0b1001_1000 | param as u8,
+            Self::AndAR8(param) => 0b1010_0000 | param as u8,
             Self::AddAImm8 => 0b1100_0110,
             Self::SubAImm8 => 0b1101_0110,
         }
@@ -949,6 +971,7 @@ impl std::fmt::Display for Op {
             Self::AdcAR8(param) => write!(f, "adc a, {}", param),
             Self::SubAR8(param) => write!(f, "sub a, {}", param),
             Self::SbcAR8(param) => write!(f, "sbc a, {}", param),
+            Self::AndAR8(param) => write!(f, "and a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
         }
@@ -1097,6 +1120,9 @@ fn make_mem() -> Vec<u8> {
 
     // sbc a, d
     add_instrc!(Op::SbcAR8(ParamR8::D));
+
+    // and a, b
+    add_instrc!(Op::AndAR8(ParamR8::H));
 
     // nop
     add_instrc!(Op::Nop);
