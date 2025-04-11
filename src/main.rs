@@ -1031,45 +1031,45 @@ impl Op {
     }
 }
 
-impl Into<u8> for Op {
-    fn into(self) -> u8 {
-        match self {
-            Self::Nop => 0x0,
-            Self::LdR16Imm16(param) => 0b0000_0001 | ((param as u8) << 4),
-            Self::LdZR16MemZA(param) => 0b0000_0010 | ((param as u8) << 4),
-            Self::LdAZR16MemZ(param) => 0b0000_1010 | ((param as u8) << 4),
-            Self::LdZImm16ZSp => 0b0000_1000,
-            Self::IncR16(param) => 0b0000_0011 | ((param as u8) << 4),
-            Self::DecR16(param) => 0b0000_1011 | ((param as u8) << 4),
-            Self::AddHlR16(param) => 0b0000_1001 | ((param as u8) << 4),
-            Self::IncR8(param) => 0b0000_0100 | ((param as u8) << 3),
-            Self::DecR8(param) => 0b0000_0101 | ((param as u8) << 3),
-            Self::LdR8Imm8(param) => 0b0000_0110 | ((param as u8) << 3),
-            Self::Rlca => 0b0000_0111,
-            Self::Rrca => 0b0000_1111,
-            Self::Rla => 0b0001_0111,
-            Self::Rra => 0b0001_1111,
-            Self::Daa => 0b0010_0111,
-            Self::Cpl => 0b0010_1111,
-            Self::Scf => 0b0011_0111,
-            Self::Ccf => 0b0011_1111,
-            Self::JrImm8 => 0b0001_1000,
-            Self::JrCcImm8(param) => 0b0010_0000 | (param as u8) << 3,
-            Self::Stop => 0b0001_0000,
-            Self::LdR8R8(dest, src) => 0b0100_0000 | (dest as u8) << 3 | src as u8,
-            Self::Halt => 0b0111_0110,
-            Self::AddAR8(param) => 0b1000_0000 | param as u8,
-            Self::AdcAR8(param) => 0b1000_1000 | param as u8,
-            Self::SubAR8(param) => 0b1001_0000 | param as u8,
-            Self::SbcAR8(param) => 0b1001_1000 | param as u8,
-            Self::AndAR8(param) => 0b1010_0000 | param as u8,
-            Self::XorAR8(param) => 0b1010_1000 | param as u8,
-            Self::OrAR8(param) => 0b1011_0000 | param as u8,
-            Self::CpAR8(param) => 0b1011_1000 | param as u8,
-            Self::AddAImm8 => 0b1100_0110,
-            Self::SubAImm8 => 0b1101_0110,
-            Self::Pop(param) => 0b1100_0001 | (param as u8) << 4,
-            Self::Push(param) => 0b1100_0101 | (param as u8) << 4,
+impl From<Op> for u8 {
+    fn from(val: Op) -> Self {
+        match val {
+            Op::Nop => 0x0,
+            Op::LdR16Imm16(param) => 0b0000_0001 | ((param as u8) << 4),
+            Op::LdZR16MemZA(param) => 0b0000_0010 | ((param as u8) << 4),
+            Op::LdAZR16MemZ(param) => 0b0000_1010 | ((param as u8) << 4),
+            Op::LdZImm16ZSp => 0b0000_1000,
+            Op::IncR16(param) => 0b0000_0011 | ((param as u8) << 4),
+            Op::DecR16(param) => 0b0000_1011 | ((param as u8) << 4),
+            Op::AddHlR16(param) => 0b0000_1001 | ((param as u8) << 4),
+            Op::IncR8(param) => 0b0000_0100 | ((param as u8) << 3),
+            Op::DecR8(param) => 0b0000_0101 | ((param as u8) << 3),
+            Op::LdR8Imm8(param) => 0b0000_0110 | ((param as u8) << 3),
+            Op::Rlca => 0b0000_0111,
+            Op::Rrca => 0b0000_1111,
+            Op::Rla => 0b0001_0111,
+            Op::Rra => 0b0001_1111,
+            Op::Daa => 0b0010_0111,
+            Op::Cpl => 0b0010_1111,
+            Op::Scf => 0b0011_0111,
+            Op::Ccf => 0b0011_1111,
+            Op::JrImm8 => 0b0001_1000,
+            Op::JrCcImm8(param) => 0b0010_0000 | ((param as u8) << 3),
+            Op::Stop => 0b0001_0000,
+            Op::LdR8R8(dest, src) => 0b0100_0000 | ((dest as u8) << 3) | src as u8,
+            Op::Halt => 0b0111_0110,
+            Op::AddAR8(param) => 0b1000_0000 | param as u8,
+            Op::AdcAR8(param) => 0b1000_1000 | param as u8,
+            Op::SubAR8(param) => 0b1001_0000 | param as u8,
+            Op::SbcAR8(param) => 0b1001_1000 | param as u8,
+            Op::AndAR8(param) => 0b1010_0000 | param as u8,
+            Op::XorAR8(param) => 0b1010_1000 | param as u8,
+            Op::OrAR8(param) => 0b1011_0000 | param as u8,
+            Op::CpAR8(param) => 0b1011_1000 | param as u8,
+            Op::AddAImm8 => 0b1100_0110,
+            Op::SubAImm8 => 0b1101_0110,
+            Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
+            Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
         }
     }
 }
@@ -1323,5 +1323,5 @@ fn main() {
             }
         );
     }
-    println!("");
+    println!();
 }
