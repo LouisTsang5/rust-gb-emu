@@ -710,6 +710,21 @@ impl<'a> Cpu<'a> {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
             }
+            Op::CallImm16 => {
+                // Get the jump address
+                let jp_addr = u16::from_le_bytes([
+                    self.mem[self.pc.post_inc()],
+                    self.mem[self.pc.post_inc()],
+                ]);
+
+                // Push the current PC to stack
+                let cur_pc = self.pc.get().to_le_bytes();
+                self.mem[self.sp.pre_dec()] = cur_pc[1];
+                self.mem[self.sp.pre_dec()] = cur_pc[0];
+
+                // Update PC
+                self.pc.set(jp_addr);
+            }
             Op::Pop(param) => {
                 let r = match param {
                     ParamR16Stk::AF => &mut self.af,
@@ -959,6 +974,7 @@ enum Op {
     AddAImm8,                 // add a, imm8
     SubAImm8,                 // sub a, imm8
     Ret,                      // ret
+    CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
 }
@@ -1030,6 +1046,7 @@ impl Op {
                 0b1100_0110 => Some(Self::AddAImm8),
                 0b1101_0110 => Some(Self::SubAImm8),
                 0b1100_1001 => Some(Self::Ret),
+                0b1100_1101 => Some(Self::CallImm16),
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
@@ -1079,6 +1096,7 @@ impl From<Op> for u8 {
             Op::AddAImm8 => 0b1100_0110,
             Op::SubAImm8 => 0b1101_0110,
             Op::Ret => 0b1100_1001,
+            Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
         }
@@ -1123,6 +1141,7 @@ impl std::fmt::Display for Op {
             Self::AddAImm8 => write!(f, "add a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Ret => write!(f, "ret"),
+            Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
         }
@@ -1131,14 +1150,15 @@ impl std::fmt::Display for Op {
 
 fn make_mem() -> Vec<u8> {
     const MEM_SIZE: usize = 128;
-    const INSTC_END: usize = MEM_SIZE - 8; // Free memory after this point
+    const INSTRC_END: usize = 100;
+    const DATA_END: usize = INSTRC_END + 8;
     let mut mem = vec![0u8; MEM_SIZE];
     let mut i_instr = 0;
-    let mut i_data = INSTC_END;
+    let mut i_data = INSTRC_END;
 
     macro_rules! add_instrc {
         ($x: expr) => {
-            assert!(i_instr < INSTC_END);
+            assert!(i_instr < INSTRC_END);
             mem[i_instr] = $x.into();
             i_instr += 1;
         };
@@ -1146,16 +1166,16 @@ fn make_mem() -> Vec<u8> {
 
     macro_rules! add_data {
         ($x: expr) => {
-            assert!(i_data < MEM_SIZE);
+            assert!(i_data < DATA_END);
             mem[i_data] = $x;
             i_data += 1;
         };
     }
 
-    // ld hl INSTC_END
+    // ld hl INSTRC_END
     add_instrc!(Op::LdR16Imm16(ParamR16::HL));
-    add_instrc!(INSTC_END.to_le_bytes()[0]);
-    add_instrc!(INSTC_END.to_le_bytes()[1]);
+    add_instrc!(INSTRC_END.to_le_bytes()[0]);
+    add_instrc!(INSTRC_END.to_le_bytes()[1]);
 
     // inc hl
     add_instrc!(Op::IncR16(ParamR16::HL));
@@ -1298,11 +1318,23 @@ fn make_mem() -> Vec<u8> {
     // pop bc
     add_instrc!(Op::Pop(ParamR16Stk::BC));
 
+    // call $(PC + 3 + 2) Skip next 2 instructions
+    let func1_addr = i_instr as u16 + 3 + 2; // call takes 3 bytes, and skip the next 2 instructions
+    add_instrc!(Op::CallImm16);
+    add_instrc!(func1_addr.to_le_bytes()[0]);
+    add_instrc!(func1_addr.to_le_bytes()[1]);
+
     // nop
     add_instrc!(Op::Nop);
 
     // stop
     add_instrc!(Op::Halt);
+
+    // xor a
+    add_instrc!(Op::XorAR8(ParamR8::A));
+
+    // ret
+    add_instrc!(Op::Ret);
 
     // Set free mem values
     add_data!(0xFF);
