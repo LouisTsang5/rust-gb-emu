@@ -758,6 +758,25 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_cf(false);
             }
+            Op::OrAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc()];
+                let a = lhs | rhs;
+                self.af.set_hi(a);
+                self.set_zf(a == 0);
+                self.set_nf(false);
+                self.set_hf(false);
+                self.set_cf(false);
+            }
+            Op::CpAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc()];
+                let (val, cf) = lhs.overflowing_sub(rhs);
+                self.set_zf(val == 0);
+                self.set_nf(true);
+                self.set_hf(hf_sub(lhs, rhs));
+                self.set_cf(cf);
+            }
             Op::Ret => {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
@@ -1029,6 +1048,8 @@ enum Op {
     SbcAImm8,                 // sbc a, imm8
     AndAImm8,                 // and a, imm8
     XorAImm8,                 // xor a, imm8
+    OrAImm8,                  // or a, imm8
+    CpAImm8,                  // cp a, imm8
     Ret,                      // ret
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
@@ -1105,6 +1126,8 @@ impl Op {
                 0b1101_1110 => Some(Self::SbcAImm8),
                 0b1110_0110 => Some(Self::AndAImm8),
                 0b1110_1110 => Some(Self::XorAImm8),
+                0b1111_0110 => Some(Self::OrAImm8),
+                0b1111_1110 => Some(Self::CpAImm8),
                 0b1100_1001 => Some(Self::Ret),
                 0b1100_1101 => Some(Self::CallImm16),
                 _ => match b & 0b0000_1111 {
@@ -1159,6 +1182,8 @@ impl From<Op> for u8 {
             Op::SbcAImm8 => 0b1101_1110,
             Op::AndAImm8 => 0b1110_0110,
             Op::XorAImm8 => 0b1110_1110,
+            Op::OrAImm8 => 0b1111_0110,
+            Op::CpAImm8 => 0b1111_1110,
             Op::Ret => 0b1100_1001,
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
@@ -1208,6 +1233,8 @@ impl std::fmt::Display for Op {
             Self::SbcAImm8 => write!(f, "sbc a, imm8"),
             Self::AndAImm8 => write!(f, "and a, imm8"),
             Self::XorAImm8 => write!(f, "xor a, imm8"),
+            Self::OrAImm8 => write!(f, "or a, imm8"),
+            Self::CpAImm8 => write!(f, "cp a, imm8"),
             Self::Ret => write!(f, "ret"),
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
@@ -1221,7 +1248,7 @@ fn make_mem() -> Vec<u8> {
     const INIT_OFFSET: u16 = 0;
     const FUNC_1_OFFSET: u16 = 8;
     const FUNC_2_OFFSET: u16 = 16;
-    const MAIN_OFFSET: u16 = 32;
+    const MAIN_OFFSET: u16 = 48;
     const DATA_OFFSET: u16 = 128;
     const STACK_OFFSET: u16 = MEM_SIZE as u16;
 
@@ -1271,7 +1298,7 @@ fn make_mem() -> Vec<u8> {
         Op::Ret,
     );
 
-    // Func_2 - add imm8 & adc imm8
+    // Func_2 - imm8 arithmetics
     add_instrc!(
         FUNC_2_OFFSET,
         Op::CallImm16,
@@ -1288,6 +1315,10 @@ fn make_mem() -> Vec<u8> {
         Op::AndAImm8,
         0xF0,
         Op::XorAImm8,
+        0x07,
+        Op::OrAImm8,
+        0xF0,
+        Op::CpAImm8,
         0x0F,
         Op::Ret,
     );
