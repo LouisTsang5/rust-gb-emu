@@ -695,6 +695,22 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_add(lhs, rhs));
                 self.set_cf(cf);
             }
+            Op::AdcAImm8 => {
+                let lhs = self.af.get_hi();
+                let rhs = self.mem[self.pc.post_inc()];
+                let carry = match self.get_cf() {
+                    true => 1,
+                    false => 0,
+                };
+
+                let (a1, c1) = lhs.overflowing_add(rhs);
+                let (a2, c2) = a1.overflowing_add(carry);
+                self.af.set_hi(a2);
+                self.set_zf(a2 == 0);
+                self.set_nf(false);
+                self.set_hf(hf_add(lhs, rhs) || hf_add(a1, carry));
+                self.set_cf(c1 || c2);
+            }
             Op::SubAImm8 => {
                 let lhs = self.af.get_hi();
                 let rhs = self.mem[self.pc.post_inc()];
@@ -972,6 +988,7 @@ enum Op {
     OrAR8(ParamR8),           // or a, r8
     CpAR8(ParamR8),           // cp a, r8
     AddAImm8,                 // add a, imm8
+    AdcAImm8,                 // adc a, imm8
     SubAImm8,                 // sub a, imm8
     Ret,                      // ret
     CallImm16,                // call imm16
@@ -1044,6 +1061,7 @@ impl Op {
             // Block 3:
             0b11 => match b {
                 0b1100_0110 => Some(Self::AddAImm8),
+                0b1100_1110 => Some(Self::AdcAImm8),
                 0b1101_0110 => Some(Self::SubAImm8),
                 0b1100_1001 => Some(Self::Ret),
                 0b1100_1101 => Some(Self::CallImm16),
@@ -1094,6 +1112,7 @@ impl From<Op> for u8 {
             Op::OrAR8(param) => 0b1011_0000 | param as u8,
             Op::CpAR8(param) => 0b1011_1000 | param as u8,
             Op::AddAImm8 => 0b1100_0110,
+            Op::AdcAImm8 => 0b1100_1110,
             Op::SubAImm8 => 0b1101_0110,
             Op::Ret => 0b1100_1001,
             Op::CallImm16 => 0b1100_1101,
@@ -1139,6 +1158,7 @@ impl std::fmt::Display for Op {
             Self::OrAR8(param) => write!(f, "or a, {}", param),
             Self::CpAR8(param) => write!(f, "cp a, {}", param),
             Self::AddAImm8 => write!(f, "add a, imm8"),
+            Self::AdcAImm8 => write!(f, "adc a, imm8"),
             Self::SubAImm8 => write!(f, "sub a, imm8"),
             Self::Ret => write!(f, "ret"),
             Self::CallImm16 => write!(f, "call imm16"),
@@ -1152,6 +1172,7 @@ fn make_mem() -> Vec<u8> {
     const MEM_SIZE: usize = 256;
     const INIT_OFFSET: u16 = 0;
     const FUNC_1_OFFSET: u16 = 8;
+    const FUNC_2_OFFSET: u16 = 16;
     const MAIN_OFFSET: u16 = 32;
     const DATA_OFFSET: u16 = 128;
     const STACK_OFFSET: u16 = MEM_SIZE as u16;
@@ -1199,6 +1220,21 @@ fn make_mem() -> Vec<u8> {
         Op::LdR8R8(ParamR8::E, ParamR8::A),
         Op::LdR8R8(ParamR8::H, ParamR8::A),
         Op::LdR8R8(ParamR8::L, ParamR8::A),
+        Op::Ret,
+    );
+
+    // Func_2 - add imm8 & adc imm8
+    add_instrc!(
+        FUNC_2_OFFSET,
+        Op::CallImm16,
+        FUNC_1_OFFSET.to_le_bytes()[0],
+        FUNC_1_OFFSET.to_le_bytes()[1],
+        Op::LdR8Imm8(ParamR8::A),
+        0xDD,
+        Op::AddAImm8,
+        0xAA,
+        Op::AdcAImm8,
+        0x88,
         Op::Ret,
     );
 
@@ -1309,6 +1345,10 @@ fn make_mem() -> Vec<u8> {
         Op::Push(ParamR16Stk::AF),
         // pop bc
         Op::Pop(ParamR16Stk::BC),
+        // call func 2
+        Op::CallImm16,
+        FUNC_2_OFFSET.to_le_bytes()[0],
+        FUNC_2_OFFSET.to_le_bytes()[1],
         // ret
         Op::Ret,
     );
