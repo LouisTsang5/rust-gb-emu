@@ -1149,199 +1149,249 @@ impl std::fmt::Display for Op {
 }
 
 fn make_mem() -> Vec<u8> {
-    const MEM_SIZE: usize = 128;
-    const INSTRC_END: usize = 100;
-    const DATA_END: usize = INSTRC_END + 8;
-    let mut mem = vec![0u8; MEM_SIZE];
-    let mut i_instr = 0;
-    let mut i_data = INSTRC_END;
+    const MEM_SIZE: usize = 256;
+    const MAIN_OFFSET: u16 = 32;
+    const FUNC_1_OFFSET: u16 = 16;
+    const DATA_OFFSET: u16 = (MEM_SIZE - 32) as u16;
 
-    macro_rules! add_instrc {
+    let mut mem = vec![0u8; MEM_SIZE];
+
+    let mut i_str_init = 0;
+    macro_rules! add_init {
         ($x: expr) => {
-            assert!(i_instr < INSTRC_END);
-            mem[i_instr] = $x.into();
-            i_instr += 1;
+            assert!(i_str_init < MAIN_OFFSET);
+            mem[i_str_init as usize] = $x.into();
+            i_str_init += 1;
         };
     }
 
+    let mut i_instr_func_1 = FUNC_1_OFFSET;
+    macro_rules! add_func_1 {
+        ($x: expr) => {
+            assert!(i_instr_func_1 < MAIN_OFFSET);
+            mem[i_instr_func_1 as usize] = $x.into();
+            i_instr_func_1 += 1;
+        };
+    }
+
+    let mut i_instr_main = MAIN_OFFSET;
+    macro_rules! add_instrc {
+        ($x: expr) => {
+            assert!(i_instr_main < DATA_OFFSET);
+            mem[i_instr_main as usize] = $x.into();
+            i_instr_main += 1;
+        };
+    }
+
+    let mut i_data = DATA_OFFSET;
     macro_rules! add_data {
         ($x: expr) => {
-            assert!(i_data < DATA_END);
-            mem[i_data] = $x;
+            assert!(i_data < MEM_SIZE as u16);
+            mem[i_data as usize] = $x;
             i_data += 1;
         };
     }
 
-    // ld hl INSTRC_END
-    add_instrc!(Op::LdR16Imm16(ParamR16::HL));
-    add_instrc!(INSTRC_END.to_le_bytes()[0]);
-    add_instrc!(INSTRC_END.to_le_bytes()[1]);
+    // Init
+    // 1. Setup stack pointer
+    // 2. Call Main
+    // 3. Halt
+    {
+        // ld sp, MEM_SIZE
+        add_init!(Op::LdR16Imm16(ParamR16::SP));
+        add_init!((MEM_SIZE as u16).to_le_bytes()[0]);
+        add_init!((MEM_SIZE as u16).to_le_bytes()[1]);
 
-    // inc hl
-    add_instrc!(Op::IncR16(ParamR16::HL));
-    add_instrc!(Op::IncR16(ParamR16::HL));
+        // call Main
+        add_init!(Op::CallImm16);
+        add_init!(MAIN_OFFSET.to_le_bytes()[0]);
+        add_init!(MAIN_OFFSET.to_le_bytes()[1]);
 
-    // ld a [hl+]
-    add_instrc!(Op::LdAZR16MemZ(ParamR16Mem::HLI));
+        // nop
+        add_init!(Op::Nop);
 
-    // ld [hl+] a
-    add_instrc!(Op::LdZR16MemZA(ParamR16Mem::HLI));
+        // Halt
+        add_init!(Op::Halt);
+    }
 
-    // inc hl
-    add_instrc!(Op::IncR16(ParamR16::HL));
-    add_instrc!(Op::IncR16(ParamR16::HL));
+    // Func_1 - clear registers
+    {
+        add_func_1!(Op::XorAR8(ParamR8::A));
+        add_func_1!(Op::LdR8Imm8(ParamR8::B));
+        add_func_1!(0);
+        add_func_1!(Op::LdR8Imm8(ParamR8::C));
+        add_func_1!(0);
+        add_func_1!(Op::LdR8Imm8(ParamR8::D));
+        add_func_1!(0);
+        add_func_1!(Op::LdR8Imm8(ParamR8::E));
+        add_func_1!(0);
+        add_func_1!(Op::LdR8Imm8(ParamR8::H));
+        add_func_1!(0);
+        add_func_1!(Op::LdR8Imm8(ParamR8::L));
+        add_func_1!(0);
+        add_func_1!(Op::Ret);
+    }
 
-    // dec bc
-    add_instrc!(Op::DecR16(ParamR16::BC));
-    add_instrc!(Op::DecR16(ParamR16::BC));
+    // Main
+    {
+        // call FUNC_1
+        add_instrc!(Op::CallImm16);
+        add_instrc!(FUNC_1_OFFSET.to_le_bytes()[0]);
+        add_instrc!(FUNC_1_OFFSET.to_le_bytes()[1]);
 
-    // add hl, bc
-    add_instrc!(Op::AddHlR16(ParamR16::BC));
+        // ld hl INSTRC_END
+        add_instrc!(Op::LdR16Imm16(ParamR16::HL));
+        add_instrc!(DATA_OFFSET.to_le_bytes()[0]);
+        add_instrc!(DATA_OFFSET.to_le_bytes()[1]);
 
-    // ld e, $0xEE
-    add_instrc!(Op::LdR8Imm8(ParamR8::E));
-    add_instrc!(0xEE);
+        // inc hl
+        add_instrc!(Op::IncR16(ParamR16::HL));
+        add_instrc!(Op::IncR16(ParamR16::HL));
 
-    // inc e
-    add_instrc!(Op::IncR8(ParamR8::E));
-    add_instrc!(Op::IncR8(ParamR8::E));
+        // ld a [hl+]
+        add_instrc!(Op::LdAZR16MemZ(ParamR16Mem::HLI));
 
-    // dec e
-    add_instrc!(Op::DecR8(ParamR8::E));
+        // ld [hl+] a
+        add_instrc!(Op::LdZR16MemZA(ParamR16Mem::HLI));
 
-    // rlca
-    add_instrc!(Op::Rlca);
-    add_instrc!(Op::Rlca);
+        // inc hl
+        add_instrc!(Op::IncR16(ParamR16::HL));
+        add_instrc!(Op::IncR16(ParamR16::HL));
 
-    // rrca
-    add_instrc!(Op::Rrca);
-    add_instrc!(Op::Rrca);
+        // dec bc
+        add_instrc!(Op::DecR16(ParamR16::BC));
+        add_instrc!(Op::DecR16(ParamR16::BC));
 
-    // rla
-    add_instrc!(Op::Rla);
+        // add hl, bc
+        add_instrc!(Op::AddHlR16(ParamR16::BC));
 
-    // rra
-    add_instrc!(Op::Rra);
+        // ld e, $0xEE
+        add_instrc!(Op::LdR8Imm8(ParamR8::E));
+        add_instrc!(0xEE);
 
-    // add a, $0x23
-    add_instrc!(Op::AddAImm8);
-    add_instrc!(0x23);
+        // inc e
+        add_instrc!(Op::IncR8(ParamR8::E));
+        add_instrc!(Op::IncR8(ParamR8::E));
 
-    // daa
-    add_instrc!(Op::Daa);
+        // dec e
+        add_instrc!(Op::DecR8(ParamR8::E));
 
-    // sub a, $0x09
-    add_instrc!(Op::SubAImm8);
-    add_instrc!(0x09);
+        // rlca
+        add_instrc!(Op::Rlca);
+        add_instrc!(Op::Rlca);
 
-    // daa
-    add_instrc!(Op::Daa);
+        // rrca
+        add_instrc!(Op::Rrca);
+        add_instrc!(Op::Rrca);
 
-    // sub a, $0x09
-    add_instrc!(Op::SubAImm8);
-    add_instrc!(0x09);
+        // rla
+        add_instrc!(Op::Rla);
 
-    // daa
-    add_instrc!(Op::Daa);
+        // rra
+        add_instrc!(Op::Rra);
 
-    // cpl
-    add_instrc!(Op::Cpl);
+        // add a, $0x23
+        add_instrc!(Op::AddAImm8);
+        add_instrc!(0x23);
 
-    // scf
-    add_instrc!(Op::Scf);
+        // daa
+        add_instrc!(Op::Daa);
 
-    // ccf
-    add_instrc!(Op::Ccf);
+        // sub a, $0x09
+        add_instrc!(Op::SubAImm8);
+        add_instrc!(0x09);
 
-    // jr $0x02
-    add_instrc!(Op::JrImm8);
-    add_instrc!(0x2);
+        // daa
+        add_instrc!(Op::Daa);
 
-    // jr nz $0x2
-    add_instrc!(Op::JrCcImm8(ParamCond::Nz));
-    add_instrc!(0x2);
+        // sub a, $0x09
+        add_instrc!(Op::SubAImm8);
+        add_instrc!(0x09);
 
-    // jr nc $-0x2
-    add_instrc!(Op::JrCcImm8(ParamCond::Nc));
-    add_instrc!(0u8.wrapping_sub(0x4));
+        // daa
+        add_instrc!(Op::Daa);
 
-    // ld [hl], l
-    add_instrc!(Op::LdR8R8(ParamR8::ZHLZ, ParamR8::L));
+        // cpl
+        add_instrc!(Op::Cpl);
 
-    // add a, l
-    add_instrc!(Op::AddAR8(ParamR8::L));
+        // scf
+        add_instrc!(Op::Scf);
 
-    // ld d, $0xF0
-    add_instrc!(Op::LdR8Imm8(ParamR8::D));
-    add_instrc!(0xF0);
+        // ccf
+        add_instrc!(Op::Ccf);
 
-    // add a, d
-    add_instrc!(Op::AdcAR8(ParamR8::D));
+        // jr $0x02
+        add_instrc!(Op::JrImm8);
+        add_instrc!(0x2);
 
-    // ld d, $0x20
-    add_instrc!(Op::LdR8Imm8(ParamR8::D));
-    add_instrc!(0x20);
+        // jr nz $0x2
+        add_instrc!(Op::JrCcImm8(ParamCond::Nz));
+        add_instrc!(0x2);
 
-    // sub a, d
-    add_instrc!(Op::SubAR8(ParamR8::D));
+        // jr nc $-0x2
+        add_instrc!(Op::JrCcImm8(ParamCond::Nc));
+        add_instrc!(0u8.wrapping_sub(0x4));
 
-    // ld d, $0xF5
-    add_instrc!(Op::LdR8Imm8(ParamR8::D));
-    add_instrc!(0xF5);
+        // ld [hl], l
+        add_instrc!(Op::LdR8R8(ParamR8::ZHLZ, ParamR8::L));
 
-    // sbc a, d
-    add_instrc!(Op::SbcAR8(ParamR8::D));
+        // add a, l
+        add_instrc!(Op::AddAR8(ParamR8::L));
 
-    // and a, c
-    add_instrc!(Op::AndAR8(ParamR8::C));
+        // ld d, $0xF0
+        add_instrc!(Op::LdR8Imm8(ParamR8::D));
+        add_instrc!(0xF0);
 
-    // xor a, e
-    add_instrc!(Op::XorAR8(ParamR8::E));
+        // add a, d
+        add_instrc!(Op::AdcAR8(ParamR8::D));
 
-    // or a, a
-    add_instrc!(Op::OrAR8(ParamR8::A));
+        // ld d, $0x20
+        add_instrc!(Op::LdR8Imm8(ParamR8::D));
+        add_instrc!(0x20);
 
-    // ld a, c
-    add_instrc!(Op::LdR8R8(ParamR8::A, ParamR8::C));
+        // sub a, d
+        add_instrc!(Op::SubAR8(ParamR8::D));
 
-    // cp a, c
-    add_instrc!(Op::CpAR8(ParamR8::C));
+        // ld d, $0xF5
+        add_instrc!(Op::LdR8Imm8(ParamR8::D));
+        add_instrc!(0xF5);
 
-    // ld sp, MEM_SIZE
-    add_instrc!(Op::LdR16Imm16(ParamR16::SP));
-    add_instrc!(MEM_SIZE.to_le_bytes()[0]);
-    add_instrc!(MEM_SIZE.to_le_bytes()[1]);
+        // sbc a, d
+        add_instrc!(Op::SbcAR8(ParamR8::D));
 
-    // push af
-    add_instrc!(Op::Push(ParamR16Stk::AF));
+        // and a, c
+        add_instrc!(Op::AndAR8(ParamR8::C));
 
-    // pop bc
-    add_instrc!(Op::Pop(ParamR16Stk::BC));
+        // xor a, e
+        add_instrc!(Op::XorAR8(ParamR8::E));
 
-    // call $(PC + 3 + 2) Skip next 2 instructions
-    let func1_addr = i_instr as u16 + 3 + 2; // call takes 3 bytes, and skip the next 2 instructions
-    add_instrc!(Op::CallImm16);
-    add_instrc!(func1_addr.to_le_bytes()[0]);
-    add_instrc!(func1_addr.to_le_bytes()[1]);
+        // or a, a
+        add_instrc!(Op::OrAR8(ParamR8::A));
 
-    // nop
-    add_instrc!(Op::Nop);
+        // ld a, c
+        add_instrc!(Op::LdR8R8(ParamR8::A, ParamR8::C));
 
-    // stop
-    add_instrc!(Op::Halt);
+        // cp a, c
+        add_instrc!(Op::CpAR8(ParamR8::C));
 
-    // xor a
-    add_instrc!(Op::XorAR8(ParamR8::A));
+        // push af
+        add_instrc!(Op::Push(ParamR16Stk::AF));
 
-    // ret
-    add_instrc!(Op::Ret);
+        // pop bc
+        add_instrc!(Op::Pop(ParamR16Stk::BC));
+
+        // ret
+        add_instrc!(Op::Ret);
+    }
 
     // Set free mem values
     add_data!(0xFF);
     add_data!(0xEE);
     add_data!(0x12);
 
-    dbg!(i_instr);
+    dbg!(i_str_init);
+    dbg!(i_instr_main);
+    dbg!(i_instr_func_1);
     dbg!(i_data);
 
     // Return
