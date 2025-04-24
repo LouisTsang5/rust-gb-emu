@@ -812,6 +812,9 @@ impl<'a> Cpu<'a> {
                 ]);
                 self.pc.set(jp_addr);
             }
+            Op::JpHl => {
+                self.pc.set(self.hl.get());
+            }
             Op::CallImm16 => {
                 // Get the jump address
                 let jp_addr = u16::from_le_bytes([
@@ -1097,6 +1100,7 @@ enum Op {
     Ret,                      // ret
     Reti,                     // reti
     JpImm16,                  // jp imm16
+    JpHl,                     // jp hl
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
@@ -1178,6 +1182,7 @@ impl Op {
                 0b1100_1001 => Some(Self::Ret),
                 0b1101_1001 => Some(Self::Reti),
                 0b1100_0011 => Some(Self::JpImm16),
+                0b1110_1001 => Some(Self::JpHl),
                 0b1100_1101 => Some(Self::CallImm16),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1237,6 +1242,7 @@ impl From<Op> for u8 {
             Op::Ret => 0b1100_1001,
             Op::Reti => 0b1101_1001,
             Op::JpImm16 => 0b1100_0011,
+            Op::JpHl => 0b1110_1001,
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
@@ -1291,6 +1297,7 @@ impl std::fmt::Display for Op {
             Self::Ret => write!(f, "ret"),
             Self::Reti => write!(f, "reti"),
             Self::JpImm16 => write!(f, "jp imm16"),
+            Self::JpHl => write!(f, "jp hl"),
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
@@ -1384,11 +1391,12 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(
         FUNC_3_OFFSET,
         Op::JpImm16,
-        (FUNC_3_OFFSET + 6).to_le_bytes()[0],
-        (FUNC_3_OFFSET + 6).to_le_bytes()[1],
-        Op::JpImm16,
-        (FUNC_3_OFFSET + 9).to_le_bytes()[0],
-        (FUNC_3_OFFSET + 9).to_le_bytes()[1],
+        (FUNC_3_OFFSET + 7).to_le_bytes()[0],
+        (FUNC_3_OFFSET + 7).to_le_bytes()[1],
+        Op::LdR16Imm16(ParamR16::HL),
+        (FUNC_3_OFFSET + 10).to_le_bytes()[0],
+        (FUNC_3_OFFSET + 10).to_le_bytes()[1],
+        Op::JpHl,
         Op::JpImm16,
         (FUNC_3_OFFSET + 3).to_le_bytes()[0],
         (FUNC_3_OFFSET + 3).to_le_bytes()[1],
