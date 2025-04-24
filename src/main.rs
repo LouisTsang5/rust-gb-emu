@@ -854,6 +854,10 @@ impl<'a> Cpu<'a> {
                 let addr = 0xFF00 + self.bc.get_lo() as usize;
                 self.mem[addr] = self.af.get_hi();
             }
+            Op::LdhZImm8ZA => {
+                let addr = 0xFF00 + self.mem[self.pc.post_inc()] as usize;
+                self.mem[addr] = self.af.get_hi();
+            }
             Op::Di => {
                 self.ime = false;
             }
@@ -1112,6 +1116,7 @@ enum Op {
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
     LdhZCZA,                  // ldh [c], a
+    LdhZImm8ZA,               // ldh [imm8], a
     Di,                       // di
     Ei,                       // ei
 }
@@ -1194,6 +1199,7 @@ impl Op {
                 0b1110_1001 => Some(Self::JpHl),
                 0b1100_1101 => Some(Self::CallImm16),
                 0b1110_0010 => Some(Self::LdhZCZA),
+                0b1110_0000 => Some(Self::LdhZImm8ZA),
                 0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1258,6 +1264,7 @@ impl From<Op> for u8 {
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
             Op::LdhZCZA => 0b1110_0010,
+            Op::LdhZImm8ZA => 0b1110_0000,
             Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
@@ -1315,6 +1322,7 @@ impl std::fmt::Display for Op {
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
             Self::LdhZCZA => write!(f, "ldh [c], a"),
+            Self::LdhZImm8ZA => write!(f, "ldh [imm8], a"),
             Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
@@ -1419,6 +1427,8 @@ fn make_mem() -> Vec<u8> {
         Op::LdR8Imm8(ParamR8::C),
         0x00,
         Op::LdhZCZA,
+        Op::LdhZImm8ZA,
+        0x01,
         Op::Ret,
     );
 
