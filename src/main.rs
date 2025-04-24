@@ -850,6 +850,9 @@ impl<'a> Cpu<'a> {
                 self.mem[self.sp.pre_dec()] = r.get_hi();
                 self.mem[self.sp.pre_dec()] = r.get_lo();
             }
+            Op::Di => {
+                self.ime = false;
+            }
             Op::Ei => {
                 self.ime_pending = ImePendingStatus::NextInstr;
             }
@@ -1105,6 +1108,7 @@ enum Op {
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
     Ei,                       // ei
+    Di,                       // di
 }
 
 impl Op {
@@ -1184,6 +1188,7 @@ impl Op {
                 0b1100_0011 => Some(Self::JpImm16),
                 0b1110_1001 => Some(Self::JpHl),
                 0b1100_1101 => Some(Self::CallImm16),
+                0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
@@ -1246,6 +1251,7 @@ impl From<Op> for u8 {
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
+            Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
     }
@@ -1301,6 +1307,7 @@ impl std::fmt::Display for Op {
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
+            Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
     }
@@ -1344,8 +1351,9 @@ fn make_mem() -> Vec<u8> {
         Op::CallImm16,
         MAIN_OFFSET.to_le_bytes()[0],
         MAIN_OFFSET.to_le_bytes()[1],
+        // di
+        Op::Di,
         //halt
-        Op::Nop,
         Op::Halt,
     );
 
