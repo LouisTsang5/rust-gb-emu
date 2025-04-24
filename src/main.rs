@@ -1107,8 +1107,8 @@ enum Op {
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
-    Ei,                       // ei
     Di,                       // di
+    Ei,                       // ei
 }
 
 impl Op {
