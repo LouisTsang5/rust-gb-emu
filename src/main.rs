@@ -858,6 +858,28 @@ impl<'a> Cpu<'a> {
                 let addr = 0xFF00 + self.mem[self.pc.post_inc()] as usize;
                 self.mem[addr] = self.af.get_hi();
             }
+            Op::LdZImm16ZA => {
+                let addr = u16::from_le_bytes([
+                    self.mem[self.pc.post_inc()],
+                    self.mem[self.pc.post_inc()],
+                ]) as usize;
+                self.mem[addr] = self.af.get_hi();
+            }
+            Op::LdhAZCZ => {
+                let addr = 0xFF00 + self.bc.get_lo() as usize;
+                self.af.set_hi(self.mem[addr]);
+            }
+            Op::LdhAZImm8Z => {
+                let addr = 0xFF00 + self.mem[self.pc.post_inc()] as usize;
+                self.af.set_hi(self.mem[addr]);
+            }
+            Op::LdAZImm16Z => {
+                let addr = u16::from_le_bytes([
+                    self.mem[self.pc.post_inc()],
+                    self.mem[self.pc.post_inc()],
+                ]) as usize;
+                self.af.set_hi(self.mem[addr]);
+            }
             Op::Di => {
                 self.ime = false;
             }
@@ -1117,6 +1139,10 @@ enum Op {
     Push(ParamR16Stk),        // push r16stk
     LdhZCZA,                  // ldh [c], a
     LdhZImm8ZA,               // ldh [imm8], a
+    LdZImm16ZA,               // ld [imm16], a
+    LdhAZCZ,                  // ldh a, [c]
+    LdhAZImm8Z,               // ldh a, [imm8]
+    LdAZImm16Z,               // ld a, [imm16]
     Di,                       // di
     Ei,                       // ei
 }
@@ -1200,6 +1226,10 @@ impl Op {
                 0b1100_1101 => Some(Self::CallImm16),
                 0b1110_0010 => Some(Self::LdhZCZA),
                 0b1110_0000 => Some(Self::LdhZImm8ZA),
+                0b1110_1010 => Some(Self::LdZImm16ZA),
+                0b1111_0010 => Some(Self::LdhAZCZ),
+                0b1111_0000 => Some(Self::LdhAZImm8Z),
+                0b1111_1010 => Some(Self::LdAZImm16Z),
                 0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1265,6 +1295,10 @@ impl From<Op> for u8 {
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
             Op::LdhZCZA => 0b1110_0010,
             Op::LdhZImm8ZA => 0b1110_0000,
+            Op::LdZImm16ZA => 0b1110_1010,
+            Op::LdhAZCZ => 0b1111_0010,
+            Op::LdhAZImm8Z => 0b1111_0000,
+            Op::LdAZImm16Z => 0b1111_1010,
             Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
@@ -1323,6 +1357,10 @@ impl std::fmt::Display for Op {
             Self::Push(param) => write!(f, "push {}", param),
             Self::LdhZCZA => write!(f, "ldh [c], a"),
             Self::LdhZImm8ZA => write!(f, "ldh [imm8], a"),
+            Self::LdZImm16ZA => write!(f, "ld [imm16], a"),
+            Self::LdhAZCZ => write!(f, "ldh a, [c]"),
+            Self::LdhAZImm8Z => write!(f, "ldh a, [imm8]"),
+            Self::LdAZImm16Z => write!(f, "ld a, [imm16]"),
             Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
@@ -1335,8 +1373,9 @@ fn make_mem() -> Vec<u8> {
     const FUNC_1_OFFSET: u16 = 8;
     const FUNC_2_OFFSET: u16 = 16;
     const FUNC_3_OFFSET: u16 = 48;
-    const MAIN_OFFSET: u16 = 64;
-    const DATA_OFFSET: u16 = 150;
+    const FUNC_4_OFFSET: u16 = 64;
+    const MAIN_OFFSET: u16 = 128;
+    const DATA_OFFSET: u16 = 210;
     const STACK_OFFSET: u16 = 0xFF + 1;
 
     let mut mem = vec![0u8; MEM_SIZE];
@@ -1424,11 +1463,28 @@ fn make_mem() -> Vec<u8> {
         Op::JpImm16,
         (FUNC_3_OFFSET + 3).to_le_bytes()[0],
         (FUNC_3_OFFSET + 3).to_le_bytes()[1],
+        Op::Ret,
+    );
+
+    // Func_4 - ld tests
+    add_instrc!(
+        FUNC_4_OFFSET,
         Op::LdR8Imm8(ParamR8::C),
-        0x00,
+        0x01,
         Op::LdhZCZA,
         Op::LdhZImm8ZA,
+        0x02,
+        Op::LdZImm16ZA,
+        0xFF03u16.to_le_bytes()[0],
+        0xFF03u16.to_le_bytes()[1],
+        Op::LdR8Imm8(ParamR8::C),
+        0x00,
+        Op::LdhAZCZ,
+        Op::LdhAZImm8Z,
         0x01,
+        Op::LdAZImm16Z,
+        0x00,
+        0xFF,
         Op::Ret,
     );
 
@@ -1547,6 +1603,10 @@ fn make_mem() -> Vec<u8> {
         Op::CallImm16,
         FUNC_3_OFFSET.to_le_bytes()[0],
         FUNC_3_OFFSET.to_le_bytes()[1],
+        // call func 4
+        Op::CallImm16,
+        FUNC_4_OFFSET.to_le_bytes()[0],
+        FUNC_4_OFFSET.to_le_bytes()[1],
         // ei
         Op::Ei,
         // ret
