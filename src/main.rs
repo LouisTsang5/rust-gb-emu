@@ -850,6 +850,10 @@ impl<'a> Cpu<'a> {
                 self.mem[self.sp.pre_dec()] = r.get_hi();
                 self.mem[self.sp.pre_dec()] = r.get_lo();
             }
+            Op::LdhZCZA => {
+                let addr = 0xFF00 + self.bc.get_lo() as usize;
+                self.mem[addr] = self.af.get_hi();
+            }
             Op::Di => {
                 self.ime = false;
             }
@@ -1107,6 +1111,7 @@ enum Op {
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
+    LdhZCZA,                  // ldh [c], a
     Di,                       // di
     Ei,                       // ei
 }
@@ -1188,6 +1193,7 @@ impl Op {
                 0b1100_0011 => Some(Self::JpImm16),
                 0b1110_1001 => Some(Self::JpHl),
                 0b1100_1101 => Some(Self::CallImm16),
+                0b1110_0010 => Some(Self::LdhZCZA),
                 0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1251,6 +1257,7 @@ impl From<Op> for u8 {
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
+            Op::LdhZCZA => 0b1110_0010,
             Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
@@ -1307,6 +1314,7 @@ impl std::fmt::Display for Op {
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
+            Self::LdhZCZA => write!(f, "ldh [c], a"),
             Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
@@ -1314,14 +1322,14 @@ impl std::fmt::Display for Op {
 }
 
 fn make_mem() -> Vec<u8> {
-    const MEM_SIZE: usize = 256;
+    const MEM_SIZE: usize = 0xFFFF + 1;
     const INIT_OFFSET: u16 = 0;
     const FUNC_1_OFFSET: u16 = 8;
     const FUNC_2_OFFSET: u16 = 16;
     const FUNC_3_OFFSET: u16 = 48;
     const MAIN_OFFSET: u16 = 64;
     const DATA_OFFSET: u16 = 150;
-    const STACK_OFFSET: u16 = MEM_SIZE as u16;
+    const STACK_OFFSET: u16 = 0xFF + 1;
 
     let mut mem = vec![0u8; MEM_SIZE];
 
@@ -1408,6 +1416,9 @@ fn make_mem() -> Vec<u8> {
         Op::JpImm16,
         (FUNC_3_OFFSET + 3).to_le_bytes()[0],
         (FUNC_3_OFFSET + 3).to_le_bytes()[1],
+        Op::LdR8Imm8(ParamR8::C),
+        0x00,
+        Op::LdhZCZA,
         Op::Ret,
     );
 
@@ -1546,17 +1557,20 @@ fn main() {
         cpu.step();
     }
 
+    for (i, &_b) in [0, 1, 2, 3][..4].iter().enumerate() {
+        println!("{}", i);
+    }
+
     // Print result
     cpu.print_reg();
-    for (i, &b) in mem.iter().enumerate() {
-        print!(
-            "0x{:02X}{}",
-            b,
+    for (start, end) in [(0, 0xFF + 1), (0xFF00, 0xFFFF + 1)] {
+        println!("0x{0:04X}({0}) ... 0x{1:04X}({1})", start, end - 1);
+        for (i, &b) in mem[start..end].iter().enumerate() {
             match (i + 1) % 16 == 0 {
-                true => '\n',
-                false => ' ',
-            }
-        );
+                false => print!("0x{:02X} ", b),
+                true => println!("0x{:02X} - 0x{:04X}", b, i + start),
+            };
+        }
+        println!();
     }
-    println!();
 }
