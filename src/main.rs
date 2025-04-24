@@ -800,6 +800,11 @@ impl<'a> Cpu<'a> {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
             }
+            Op::Reti => {
+                self.ime_pending = ImePendingStatus::ThisInstr;
+                self.pc.set_lo(self.mem[self.sp.post_inc()]);
+                self.pc.set_hi(self.mem[self.sp.post_inc()]);
+            }
             Op::CallImm16 => {
                 // Get the jump address
                 let jp_addr = u16::from_le_bytes([
@@ -1083,6 +1088,7 @@ enum Op {
     OrAImm8,                  // or a, imm8
     CpAImm8,                  // cp a, imm8
     Ret,                      // ret
+    Reti,                     // reti
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
@@ -1162,6 +1168,7 @@ impl Op {
                 0b1111_0110 => Some(Self::OrAImm8),
                 0b1111_1110 => Some(Self::CpAImm8),
                 0b1100_1001 => Some(Self::Ret),
+                0b1101_1001 => Some(Self::Reti),
                 0b1100_1101 => Some(Self::CallImm16),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1219,6 +1226,7 @@ impl From<Op> for u8 {
             Op::OrAImm8 => 0b1111_0110,
             Op::CpAImm8 => 0b1111_1110,
             Op::Ret => 0b1100_1001,
+            Op::Reti => 0b1101_1001,
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
@@ -1271,6 +1279,7 @@ impl std::fmt::Display for Op {
             Self::OrAImm8 => write!(f, "or a, imm8"),
             Self::CpAImm8 => write!(f, "cp a, imm8"),
             Self::Ret => write!(f, "ret"),
+            Self::Reti => write!(f, "reti"),
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
@@ -1473,7 +1482,7 @@ fn make_mem() -> Vec<u8> {
         // ei
         Op::Ei,
         // ret
-        Op::Ret,
+        Op::Reti,
     );
 
     // Set data section values
