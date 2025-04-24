@@ -805,6 +805,13 @@ impl<'a> Cpu<'a> {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
             }
+            Op::JpImm16 => {
+                let jp_addr = u16::from_le_bytes([
+                    self.mem[self.pc.post_inc()],
+                    self.mem[self.pc.post_inc()],
+                ]);
+                self.pc.set(jp_addr);
+            }
             Op::CallImm16 => {
                 // Get the jump address
                 let jp_addr = u16::from_le_bytes([
@@ -1089,6 +1096,7 @@ enum Op {
     CpAImm8,                  // cp a, imm8
     Ret,                      // ret
     Reti,                     // reti
+    JpImm16,                  // jp imm16
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
@@ -1169,6 +1177,7 @@ impl Op {
                 0b1111_1110 => Some(Self::CpAImm8),
                 0b1100_1001 => Some(Self::Ret),
                 0b1101_1001 => Some(Self::Reti),
+                0b1100_0011 => Some(Self::JpImm16),
                 0b1100_1101 => Some(Self::CallImm16),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1227,6 +1236,7 @@ impl From<Op> for u8 {
             Op::CpAImm8 => 0b1111_1110,
             Op::Ret => 0b1100_1001,
             Op::Reti => 0b1101_1001,
+            Op::JpImm16 => 0b1100_0011,
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
@@ -1280,6 +1290,7 @@ impl std::fmt::Display for Op {
             Self::CpAImm8 => write!(f, "cp a, imm8"),
             Self::Ret => write!(f, "ret"),
             Self::Reti => write!(f, "reti"),
+            Self::JpImm16 => write!(f, "jp imm16"),
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
@@ -1293,8 +1304,9 @@ fn make_mem() -> Vec<u8> {
     const INIT_OFFSET: u16 = 0;
     const FUNC_1_OFFSET: u16 = 8;
     const FUNC_2_OFFSET: u16 = 16;
-    const MAIN_OFFSET: u16 = 48;
-    const DATA_OFFSET: u16 = 128;
+    const FUNC_3_OFFSET: u16 = 48;
+    const MAIN_OFFSET: u16 = 64;
+    const DATA_OFFSET: u16 = 150;
     const STACK_OFFSET: u16 = MEM_SIZE as u16;
 
     let mut mem = vec![0u8; MEM_SIZE];
@@ -1365,6 +1377,21 @@ fn make_mem() -> Vec<u8> {
         0xF0,
         Op::CpAImm8,
         0x0F,
+        Op::Ret,
+    );
+
+    // Func_3 - jp tests
+    add_instrc!(
+        FUNC_3_OFFSET,
+        Op::JpImm16,
+        (FUNC_3_OFFSET + 6).to_le_bytes()[0],
+        (FUNC_3_OFFSET + 6).to_le_bytes()[1],
+        Op::JpImm16,
+        (FUNC_3_OFFSET + 9).to_le_bytes()[0],
+        (FUNC_3_OFFSET + 9).to_le_bytes()[1],
+        Op::JpImm16,
+        (FUNC_3_OFFSET + 3).to_le_bytes()[0],
+        (FUNC_3_OFFSET + 3).to_le_bytes()[1],
         Op::Ret,
     );
 
@@ -1479,6 +1506,10 @@ fn make_mem() -> Vec<u8> {
         Op::CallImm16,
         FUNC_2_OFFSET.to_le_bytes()[0],
         FUNC_2_OFFSET.to_le_bytes()[1],
+        // call func 3
+        Op::CallImm16,
+        FUNC_3_OFFSET.to_le_bytes()[0],
+        FUNC_3_OFFSET.to_le_bytes()[1],
         // ei
         Op::Ei,
         // ret
