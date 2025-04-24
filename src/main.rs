@@ -1567,10 +1567,6 @@ fn main() {
         cpu.step();
     }
 
-    for (i, &_b) in [0, 1, 2, 3][..4].iter().enumerate() {
-        println!("{}", i);
-    }
-
     // Print result
     cpu.print_reg();
     for (start, end) in [(0, 0xFF + 1), (0xFF00, 0xFFFF + 1)] {
