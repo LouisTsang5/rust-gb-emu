@@ -51,6 +51,18 @@ impl std::fmt::Display for Reg16 {
     }
 }
 
+/// Indicates when should the IME flag be set
+#[derive(Debug, Default)]
+enum ImePendingStatus {
+    /// IME flag is set after THE NEXT instruction
+    NextInstr,
+    /// IME flag is set after THIS instruction
+    ThisInstr,
+    #[default]
+    /// IME flag remains unchanged
+    None,
+}
+
 #[derive(Debug, Default)]
 struct Cpu<'a> {
     // Memory
@@ -66,6 +78,10 @@ struct Cpu<'a> {
 
     // Halted
     halted: bool,
+
+    // Interrupt Master Enable
+    ime_pending: ImePendingStatus,
+    ime: bool,
 }
 
 // Generate flag functions
@@ -118,6 +134,7 @@ impl<'a> Cpu<'a> {
         self.sp.set(0);
         self.pc.set(0);
         self.halted = false;
+        self.ime = false;
     }
 
     fn print_reg(&self) {
@@ -128,10 +145,11 @@ impl<'a> Cpu<'a> {
             hl,
             sp,
             pc,
+            ime,
             ..
         } = self;
         println!(
-            "a: 0x{0:02X} (0b{0:08b}), f: 0x{1:002X} (0b{1:08b}), b: 0x{2:002X}, c: 0x{3:002X}, d: 0x{4:002X}, e: 0x{5:002X}, h: 0x{6:002X}, l: 0x{7:002X}, sp: {8}, pc: {9}",
+            "a: 0x{0:02X} (0b{0:08b}), f: 0x{1:002X} (0b{1:08b}), b: 0x{2:002X}, c: 0x{3:002X}, d: 0x{4:002X}, e: 0x{5:002X}, h: 0x{6:002X}, l: 0x{7:002X}, sp: {8}, pc: {9}, ime: {10}",
             af.get_hi(),
             af.get_lo(),
             bc.get_hi(),
@@ -142,6 +160,7 @@ impl<'a> Cpu<'a> {
             hl.get_lo(),
             sp,
             pc,
+            ime,
         );
     }
 
@@ -816,7 +835,20 @@ impl<'a> Cpu<'a> {
                 self.mem[self.sp.pre_dec()] = r.get_hi();
                 self.mem[self.sp.pre_dec()] = r.get_lo();
             }
-        }
+            Op::Ei => {
+                self.ime_pending = ImePendingStatus::NextInstr;
+            }
+        };
+
+        // IME flag handling
+        match self.ime_pending {
+            ImePendingStatus::None => {}
+            ImePendingStatus::NextInstr => self.ime_pending = ImePendingStatus::ThisInstr,
+            ImePendingStatus::ThisInstr => {
+                self.ime = true;
+                self.ime_pending = ImePendingStatus::None;
+            }
+        };
     }
 }
 
@@ -1054,6 +1086,7 @@ enum Op {
     CallImm16,                // call imm16
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
+    Ei,                       // ei
 }
 
 impl Op {
@@ -1130,6 +1163,7 @@ impl Op {
                 0b1111_1110 => Some(Self::CpAImm8),
                 0b1100_1001 => Some(Self::Ret),
                 0b1100_1101 => Some(Self::CallImm16),
+                0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
@@ -1188,6 +1222,7 @@ impl From<Op> for u8 {
             Op::CallImm16 => 0b1100_1101,
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
+            Op::Ei => 0b1111_1011,
         }
     }
 }
@@ -1239,6 +1274,7 @@ impl std::fmt::Display for Op {
             Self::CallImm16 => write!(f, "call imm16"),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
+            Self::Ei => write!(f, "ei"),
         }
     }
 }
@@ -1434,6 +1470,8 @@ fn make_mem() -> Vec<u8> {
         Op::CallImm16,
         FUNC_2_OFFSET.to_le_bytes()[0],
         FUNC_2_OFFSET.to_le_bytes()[1],
+        // ei
+        Op::Ei,
         // ret
         Op::Ret,
     );
