@@ -940,6 +940,9 @@ impl<'a> Cpu<'a> {
                 self.set_zf(false);
                 self.set_nf(false);
             }
+            Op::LdSpHl => {
+                self.sp.set(self.hl.get());
+            }
             Op::Di => {
                 self.ime = false;
             }
@@ -1205,6 +1208,7 @@ enum Op {
     LdAZImm16Z,               // ld a, [imm16]
     AddSpImm8,                // add sp, imm8
     LdHlSpXImm8,              // ld hl, sp + imm8
+    LdSpHl,                   // ld sp, hl
     Di,                       // di
     Ei,                       // ei
 }
@@ -1294,6 +1298,7 @@ impl Op {
                 0b1111_1010 => Some(Self::LdAZImm16Z),
                 0b1110_1000 => Some(Self::AddSpImm8),
                 0b1111_1000 => Some(Self::LdHlSpXImm8),
+                0b1111_1001 => Some(Self::LdSpHl),
                 0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1365,6 +1370,7 @@ impl From<Op> for u8 {
             Op::LdAZImm16Z => 0b1111_1010,
             Op::AddSpImm8 => 0b1110_1000,
             Op::LdHlSpXImm8 => 0b1111_1000,
+            Op::LdSpHl => 0b1111_1001,
             Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
@@ -1429,6 +1435,7 @@ impl std::fmt::Display for Op {
             Self::LdAZImm16Z => write!(f, "ld a, [imm16]"),
             Self::AddSpImm8 => write!(f, "add sp, imm8"),
             Self::LdHlSpXImm8 => write!(f, "ld hl, sp + imm8"),
+            Self::LdSpHl => write!(f, "ld sp, hl"),
             Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
@@ -1561,6 +1568,9 @@ fn make_mem() -> Vec<u8> {
         Op::LdAZImm16Z,
         0x00,
         0xFF,
+        Op::LdHlSpXImm8,
+        0x0,
+        Op::LdSpHl,
         Op::Ret,
     );
 
