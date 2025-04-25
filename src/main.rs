@@ -817,6 +817,21 @@ impl<'a> Cpu<'a> {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
             }
+            Op::JpCondImm16(cond) => {
+                let is_jp = match cond {
+                    ParamCond::C => self.get_cf(),
+                    ParamCond::Nc => !self.get_cf(),
+                    ParamCond::Z => self.get_zf(),
+                    ParamCond::Nz => !self.get_zf(),
+                };
+                if is_jp {
+                    let jp_addr = u16::from_le_bytes([
+                        self.mem[self.pc.post_inc()],
+                        self.mem[self.pc.post_inc()],
+                    ]);
+                    self.pc.set(jp_addr);
+                }
+            }
             Op::JpImm16 => {
                 let jp_addr = u16::from_le_bytes([
                     self.mem[self.pc.post_inc()],
@@ -1208,6 +1223,7 @@ enum Op {
     RetCond(ParamCond),       // ret cond
     Ret,                      // ret
     Reti,                     // reti
+    JpCondImm16(ParamCond),   // jp cond, imm16
     JpImm16,                  // jp imm16
     JpHl,                     // jp hl
     CallImm16,                // call imm16
@@ -1319,6 +1335,7 @@ impl Op {
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     _ => match b & 0b0000_0111 {
                         0b000 => Some(Self::RetCond(ParamCond::from((b & 0b0001_1000) >> 3))),
+                        0b010 => Some(Self::JpCondImm16(ParamCond::from((b & 0b0001_1000) >> 3))),
                         _ => None,
                     },
                 },
@@ -1374,6 +1391,7 @@ impl From<Op> for u8 {
             Op::RetCond(param) => 0b1100_0000 | ((param as u8) << 3),
             Op::Ret => 0b1100_1001,
             Op::Reti => 0b1101_1001,
+            Op::JpCondImm16(param) => 0b1100_0010 | ((param as u8) << 3),
             Op::JpImm16 => 0b1100_0011,
             Op::JpHl => 0b1110_1001,
             Op::CallImm16 => 0b1100_1101,
@@ -1416,6 +1434,7 @@ impl std::fmt::Display for Op {
             Self::Cpl => write!(f, "cpl"),
             Self::Scf => write!(f, "scf"),
             Self::Ccf => write!(f, "ccf"),
+            Self::JpCondImm16(param) => write!(f, "jp {}, imm16", param),
             Self::JrImm8 => write!(f, "jr imm8"),
             Self::JrCcImm8(param) => write!(f, "jr {}, imm8", param),
             Self::Stop => write!(f, "stop"),
@@ -1554,7 +1573,7 @@ fn make_mem() -> Vec<u8> {
     // Func_3 - jp tests
     add_instrc!(
         FUNC_3_OFFSET,
-        Op::JpImm16,
+        Op::JpCondImm16(ParamCond::Nz),
         (FUNC_3_OFFSET + 7).to_le_bytes()[0],
         (FUNC_3_OFFSET + 7).to_le_bytes()[1],
         Op::LdR16Imm16(ParamR16::HL),
