@@ -910,6 +910,36 @@ impl<'a> Cpu<'a> {
                 self.set_zf(false);
                 self.set_nf(false);
             }
+            Op::LdHlSpXImm8 => {
+                let imm8 = self.mem[self.pc.post_inc()];
+                let splo = self.sp.get_lo();
+                let sphi = self.sp.get_hi();
+
+                // Add imm8 with sp-lo
+                let hf = hf_add(splo, imm8);
+                let (splo, cf) = splo.overflowing_add(imm8);
+
+                // Inc / Dec sp-hi according to carry flag and sign bit of imm8
+                let signed = (imm8 & 0x80) > 0;
+                let sphi = if cf && !signed {
+                    // if carry & not signed, inc sp hi
+                    sphi.wrapping_add(1)
+                } else if !cf && signed {
+                    // if not carry & signed, dec sp hi
+                    sphi.wrapping_sub(1)
+                } else {
+                    // keep sp hi as-is
+                    sphi
+                };
+
+                // Set values
+                self.hl.set_lo(splo);
+                self.hl.set_hi(sphi);
+                self.set_cf(cf);
+                self.set_hf(hf);
+                self.set_zf(false);
+                self.set_nf(false);
+            }
             Op::Di => {
                 self.ime = false;
             }
@@ -1117,7 +1147,7 @@ impl std::fmt::Display for ParamCond {
     }
 }
 
-// Z = []
+// Z = [], X = +
 #[derive(Debug)]
 enum Op {
     Nop,                      // nop
@@ -1174,6 +1204,7 @@ enum Op {
     LdhAZImm8Z,               // ldh a, [imm8]
     LdAZImm16Z,               // ld a, [imm16]
     AddSpImm8,                // add sp, imm8
+    LdHlSpXImm8,              // ld hl, sp + imm8
     Di,                       // di
     Ei,                       // ei
 }
@@ -1262,6 +1293,7 @@ impl Op {
                 0b1111_0000 => Some(Self::LdhAZImm8Z),
                 0b1111_1010 => Some(Self::LdAZImm16Z),
                 0b1110_1000 => Some(Self::AddSpImm8),
+                0b1111_1000 => Some(Self::LdHlSpXImm8),
                 0b1111_0011 => Some(Self::Di),
                 0b1111_1011 => Some(Self::Ei),
                 _ => match b & 0b0000_1111 {
@@ -1332,6 +1364,7 @@ impl From<Op> for u8 {
             Op::LdhAZImm8Z => 0b1111_0000,
             Op::LdAZImm16Z => 0b1111_1010,
             Op::AddSpImm8 => 0b1110_1000,
+            Op::LdHlSpXImm8 => 0b1111_1000,
             Op::Di => 0b1111_0011,
             Op::Ei => 0b1111_1011,
         }
@@ -1395,6 +1428,7 @@ impl std::fmt::Display for Op {
             Self::LdhAZImm8Z => write!(f, "ldh a, [imm8]"),
             Self::LdAZImm16Z => write!(f, "ld a, [imm16]"),
             Self::AddSpImm8 => write!(f, "add sp, imm8"),
+            Self::LdHlSpXImm8 => write!(f, "ld hl, sp + imm8"),
             Self::Di => write!(f, "di"),
             Self::Ei => write!(f, "ei"),
         }
@@ -1448,6 +1482,8 @@ fn make_mem() -> Vec<u8> {
         // add sp, $0xFF
         Op::AddSpImm8,
         0x7F,
+        Op::LdHlSpXImm8,
+        0x73,
         //halt
         Op::Halt,
     );
