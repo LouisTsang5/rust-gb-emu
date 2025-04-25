@@ -796,6 +796,18 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
             }
+            Op::RetCond(cond) => {
+                let is_jp = match cond {
+                    ParamCond::C => self.get_cf(),
+                    ParamCond::Nc => !self.get_cf(),
+                    ParamCond::Z => self.get_zf(),
+                    ParamCond::Nz => !self.get_zf(),
+                };
+                if is_jp {
+                    self.pc.set_lo(self.mem[self.sp.post_inc()]);
+                    self.pc.set_hi(self.mem[self.sp.post_inc()]);
+                }
+            }
             Op::Ret => {
                 self.pc.set_lo(self.mem[self.sp.post_inc()]);
                 self.pc.set_hi(self.mem[self.sp.post_inc()]);
@@ -1193,6 +1205,7 @@ enum Op {
     XorAImm8,                 // xor a, imm8
     OrAImm8,                  // or a, imm8
     CpAImm8,                  // cp a, imm8
+    RetCond(ParamCond),       // ret cond
     Ret,                      // ret
     Reti,                     // reti
     JpImm16,                  // jp imm16
@@ -1304,7 +1317,10 @@ impl Op {
                 _ => match b & 0b0000_1111 {
                     0b0001 => Some(Self::Pop(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
                     0b0101 => Some(Self::Push(ParamR16Stk::from((b & 0b0011_0000) >> 4))),
-                    _ => None,
+                    _ => match b & 0b0000_0111 {
+                        0b000 => Some(Self::RetCond(ParamCond::from((b & 0b0001_1000) >> 3))),
+                        _ => None,
+                    },
                 },
             },
             _ => None,
@@ -1355,6 +1371,7 @@ impl From<Op> for u8 {
             Op::XorAImm8 => 0b1110_1110,
             Op::OrAImm8 => 0b1111_0110,
             Op::CpAImm8 => 0b1111_1110,
+            Op::RetCond(param) => 0b1100_0000 | ((param as u8) << 3),
             Op::Ret => 0b1100_1001,
             Op::Reti => 0b1101_1001,
             Op::JpImm16 => 0b1100_0011,
@@ -1420,6 +1437,7 @@ impl std::fmt::Display for Op {
             Self::XorAImm8 => write!(f, "xor a, imm8"),
             Self::OrAImm8 => write!(f, "or a, imm8"),
             Self::CpAImm8 => write!(f, "cp a, imm8"),
+            Self::RetCond(param) => write!(f, "ret {}", param),
             Self::Ret => write!(f, "ret"),
             Self::Reti => write!(f, "reti"),
             Self::JpImm16 => write!(f, "jp imm16"),
@@ -1571,6 +1589,7 @@ fn make_mem() -> Vec<u8> {
         Op::LdHlSpXImm8,
         0x0,
         Op::LdSpHl,
+        Op::RetCond(ParamCond::Nz),
         Op::Ret,
     );
 
