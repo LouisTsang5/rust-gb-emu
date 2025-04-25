@@ -824,11 +824,13 @@ impl<'a> Cpu<'a> {
                     ParamCond::Z => self.get_zf(),
                     ParamCond::Nz => !self.get_zf(),
                 };
+
+                let jp_addr = u16::from_le_bytes([
+                    self.mem[self.pc.post_inc()],
+                    self.mem[self.pc.post_inc()],
+                ]);
+
                 if is_jp {
-                    let jp_addr = u16::from_le_bytes([
-                        self.mem[self.pc.post_inc()],
-                        self.mem[self.pc.post_inc()],
-                    ]);
                     self.pc.set(jp_addr);
                 }
             }
