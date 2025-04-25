@@ -883,6 +883,15 @@ impl<'a> Cpu<'a> {
                 // Update PC
                 self.pc.set(jp_addr);
             }
+            Op::Rst(addr) => {
+                // Push the current PC to stack
+                let cur_pc = self.pc.get().to_le_bytes();
+                self.mem[self.sp.pre_dec()] = cur_pc[1];
+                self.mem[self.sp.pre_dec()] = cur_pc[0];
+
+                // Update PC
+                self.pc.set(addr.addr());
+            }
             Op::Pop(param) => {
                 let r = match param {
                     ParamR16Stk::AF => &mut self.af,
@@ -1060,6 +1069,43 @@ impl std::fmt::Display for ParamR8 {
                 Self::A => "a",
             }
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RstAddr {
+    idx: u8,
+}
+
+impl RstAddr {
+    pub fn addr(&self) -> u16 {
+        self.idx as u16 * 8
+    }
+
+    pub fn idx(&self) -> u8 {
+        self.idx
+    }
+
+    pub fn from_idx(idx: u8) -> Self {
+        if idx > 7 {
+            panic!("Invalid rst index {:#X}", idx);
+        }
+        RstAddr { idx }
+    }
+
+    pub fn from_addr(addr: u16) -> Self {
+        if (addr % 8 != 0) || (addr / 8) > 7 {
+            panic!("Invalid rst address {:#X}", addr);
+        }
+        RstAddr {
+            idx: (addr / 8) as u8,
+        }
+    }
+}
+
+impl std::fmt::Display for RstAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{:02X}", self.addr())
     }
 }
 
@@ -1254,6 +1300,7 @@ enum Op {
     JpHl,                     // jp hl
     CallCondImm16(ParamCond), // call cond, imm16
     CallImm16,                // call imm16
+    Rst(RstAddr),             // rst addrvec
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
     LdhZCZA,                  // ldh [c], a
@@ -1364,6 +1411,7 @@ impl Op {
                         0b000 => Some(Self::RetCond(ParamCond::from((b & 0b0001_1000) >> 3))),
                         0b010 => Some(Self::JpCondImm16(ParamCond::from((b & 0b0001_1000) >> 3))),
                         0b100 => Some(Self::CallCondImm16(ParamCond::from((b & 0b0001_1000) >> 3))),
+                        0b111 => Some(Self::Rst(RstAddr::from_idx((b & 0b0011_1000) >> 3))),
                         _ => None,
                     },
                 },
@@ -1424,6 +1472,7 @@ impl From<Op> for u8 {
             Op::JpHl => 0b1110_1001,
             Op::CallCondImm16(param) => 0b1100_0100 | ((param as u8) << 3),
             Op::CallImm16 => 0b1100_1101,
+            Op::Rst(addr) => 0b1100_0111 | (addr.idx() << 3),
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
             Op::LdhZCZA => 0b1110_0010,
@@ -1492,6 +1541,7 @@ impl std::fmt::Display for Op {
             Self::JpHl => write!(f, "jp hl"),
             Self::CallCondImm16(param) => write!(f, "call {}, imm16", param),
             Self::CallImm16 => write!(f, "call imm16"),
+            Self::Rst(addr) => write!(f, "rst {}", addr),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
             Self::LdhZCZA => write!(f, "ldh [c], a"),
@@ -1646,9 +1696,7 @@ fn make_mem() -> Vec<u8> {
     add_instrc!(
         MAIN_OFFSET,
         // call FUNC_1
-        Op::CallImm16,
-        FUNC_1_OFFSET.to_le_bytes()[0],
-        FUNC_1_OFFSET.to_le_bytes()[1],
+        Op::Rst(RstAddr::from_addr(0x10)),
         // ld hl INSTRC_END
         Op::LdR16Imm16(ParamR16::HL),
         DATA_OFFSET.to_le_bytes()[0],
