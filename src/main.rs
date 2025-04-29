@@ -2037,7 +2037,7 @@ fn main() {
 
     // Print result
     cpu.print_reg();
-    for (start, end) in [(0, 0xFF + 1), (0xFF00, 0xFFFF + 1)] {
+    for (start, end) in [(0, 0xFF + 1), (0xFF00, 0xFF0F + 1)] {
         println!("0x{0:04X}({0}) ... 0x{1:04X}({1})", start, end - 1);
         for (i, &b) in mem[start..end].iter().enumerate() {
             match (i + 1) % 16 == 0 {
