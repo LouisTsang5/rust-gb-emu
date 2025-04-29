@@ -267,7 +267,7 @@ impl<'a> Cpu<'a> {
                 let o_val = *r;
                 let n_val = o_val << 1;
                 *r = n_val;
-                self.set_cf(o_val & 0x80 > 1);
+                self.set_cf(o_val & 0x80 > 0);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
