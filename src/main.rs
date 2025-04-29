@@ -1068,7 +1068,7 @@ impl<'a> Cpu<'a> {
             Op::Prefix => {
                 let b = self.mem[self.pc.post_inc()];
                 let op = CbPrefixOp::try_from(b)
-                    .expect(&format!("Invalid 0xCB prefix op code 0x{:02X}", b));
+                    .unwrap_or_else(|_| panic!("Invalid 0xCB prefix op code 0x{:02X}", b));
                 println!(
                     "0x{:04x}: {} (0b{:08b})",
                     self.pc.get().wrapping_sub(1),
@@ -1493,7 +1493,7 @@ impl From<CbPrefixOp> for u8 {
             CbPrefixOp::SraR8(p) => 0b0010_1000 | (p as u8),
             CbPrefixOp::SwapR8(p) => 0b0011_0000 | (p as u8),
             CbPrefixOp::SrlR8(p) => 0b0011_1000 | (p as u8),
-            CbPrefixOp::BitB3R8(b, p) => 0b0100_0000 | b.val() << 3 | (p as u8),
+            CbPrefixOp::BitB3R8(b, p) => 0b0100_0000 | (b.val() << 3) | (p as u8),
         }
     }
 }
