@@ -222,6 +222,46 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_nf(false);
             }
+            CbPrefixOp::RlR8(param) => {
+                let o_cf = self.get_cf();
+                let r = mut_r8!(param);
+                let o_val = *r;
+
+                // after rotation
+                let n_val = o_val << 1
+                    | match o_cf {
+                        true => 1,
+                        false => 0,
+                    };
+                let n_cf = (o_val & 0x80) > 0;
+
+                // set val
+                *r = n_val;
+                self.set_cf(n_cf);
+                self.set_zf(n_val == 0);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
+            CbPrefixOp::RrR8(param) => {
+                let o_cf = self.get_cf();
+                let r = mut_r8!(param);
+                let o_val = *r;
+
+                // after rotation
+                let n_val = o_val >> 1
+                    | match o_cf {
+                        true => 0x80,
+                        false => 0,
+                    };
+                let n_cf = (o_val & 0x01) > 0;
+
+                // set val
+                *r = n_val;
+                self.set_cf(n_cf);
+                self.set_zf(n_val == 0);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
         };
     }
 
@@ -1318,6 +1358,8 @@ impl std::fmt::Display for ParamCond {
 enum CbPrefixOp {
     RlcR8(ParamR8), // rlc r8
     RrcR8(ParamR8), // rrc r8
+    RlR8(ParamR8),  // rl r8
+    RrR8(ParamR8),  // rr r8
 }
 
 impl TryFrom<u8> for CbPrefixOp {
@@ -1329,6 +1371,8 @@ impl TryFrom<u8> for CbPrefixOp {
             0b00 => match (b & 0b0011_1000) >> 3 {
                 0b000 => Ok(Self::RlcR8(ParamR8::from(b & 0b0000_0111))),
                 0b001 => Ok(Self::RrcR8(ParamR8::from(b & 0b0000_0111))),
+                0b010 => Ok(Self::RlR8(ParamR8::from(b & 0b0000_0111))),
+                0b011 => Ok(Self::RrR8(ParamR8::from(b & 0b0000_0111))),
                 _ => Err(()),
             },
             _ => Err(()),
@@ -1341,6 +1385,8 @@ impl From<CbPrefixOp> for u8 {
         match b {
             CbPrefixOp::RlcR8(p) => 0b0000_0000 | (p as u8),
             CbPrefixOp::RrcR8(p) => 0b0000_1000 | (p as u8),
+            CbPrefixOp::RlR8(p) => 0b0001_0000 | (p as u8),
+            CbPrefixOp::RrR8(p) => 0b0001_1000 | (p as u8),
         }
     }
 }
@@ -1350,6 +1396,8 @@ impl std::fmt::Display for CbPrefixOp {
         match self {
             Self::RlcR8(p) => write!(f, "rlc {}", p),
             Self::RrcR8(p) => write!(f, "rrc {}", p),
+            Self::RlR8(p) => write!(f, "rl {}", p),
+            Self::RrR8(p) => write!(f, "rr {}", p),
         }
     }
 }
@@ -1926,6 +1974,15 @@ fn make_mem() -> Vec<u8> {
         // rrc [hl]
         Op::Prefix,
         CbPrefixOp::RrcR8(ParamR8::ZHLZ),
+        // ld [hl], $8F
+        Op::LdR8Imm8(ParamR8::ZHLZ),
+        0x8F,
+        // rl [hl]
+        Op::Prefix,
+        CbPrefixOp::RlR8(ParamR8::ZHLZ),
+        // rr [hl]
+        Op::Prefix,
+        CbPrefixOp::RrR8(ParamR8::ZHLZ),
         // ret
         Op::Reti,
     );
