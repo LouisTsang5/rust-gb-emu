@@ -6,6 +6,14 @@ impl Reg16 {
         u16::from_be_bytes(self.0)
     }
 
+    fn mut_hi(&mut self) -> &mut u8 {
+        &mut self.0[0]
+    }
+
+    fn mut_lo(&mut self) -> &mut u8 {
+        &mut self.0[1]
+    }
+
     fn get_hi(&self) -> u8 {
         self.0[0]
     }
@@ -171,6 +179,37 @@ impl<'a> Cpu<'a> {
         };
         cpu.reset();
         cpu
+    }
+
+    fn step_cb_op(&mut self, op: CbPrefixOp) {
+        macro_rules! mut_r8 {
+            ($r8: expr) => {
+                match $r8 {
+                    ParamR8::A => self.af.mut_hi(),
+                    ParamR8::B => self.bc.mut_hi(),
+                    ParamR8::C => self.bc.mut_lo(),
+                    ParamR8::D => self.de.mut_hi(),
+                    ParamR8::E => self.de.mut_lo(),
+                    ParamR8::H => self.hl.mut_hi(),
+                    ParamR8::L => self.hl.mut_lo(),
+                    ParamR8::ZHLZ => &mut self.mem[self.hl.as_idx()],
+                }
+            };
+        }
+
+        match op {
+            CbPrefixOp::RlcR8(param) => {
+                let r = mut_r8!(param);
+                let val = *r;
+                let new_val = val << 1;
+
+                *r = new_val;
+                self.set_cf((val & 0x80) > 0);
+                self.set_zf(new_val == 0);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
+        };
     }
 
     fn step(&mut self) {
@@ -912,6 +951,18 @@ impl<'a> Cpu<'a> {
                 self.mem[self.sp.pre_dec()] = r.get_hi();
                 self.mem[self.sp.pre_dec()] = r.get_lo();
             }
+            Op::Prefix => {
+                let b = self.mem[self.pc.post_inc()];
+                let op = CbPrefixOp::try_from(b)
+                    .expect(&format!("Invalid 0xCB prefix op code 0x{:02X}", b));
+                println!(
+                    "0x{:04x}: {} (0b{:08b})",
+                    self.pc.get().wrapping_sub(1),
+                    op,
+                    u8::from(op),
+                );
+                self.step_cb_op(op);
+            }
             Op::LdhZCZA => {
                 let addr = 0xFF00 + self.bc.get_lo() as usize;
                 self.mem[addr] = self.af.get_hi();
@@ -1249,6 +1300,43 @@ impl std::fmt::Display for ParamCond {
     }
 }
 
+/// 0xCB prefixed opertations
+#[derive(Debug, Clone, Copy)]
+enum CbPrefixOp {
+    RlcR8(ParamR8), // rlc r8
+}
+
+impl TryFrom<u8> for CbPrefixOp {
+    /// only one reason for error, invalid byte
+    type Error = ();
+
+    fn try_from(b: u8) -> Result<Self, Self::Error> {
+        match (b & 0b1100_0000) >> 6 {
+            0b00 => match (b & 0b0011_1000) >> 3 {
+                0b000 => Ok(Self::RlcR8(ParamR8::from(b & 0b0000_0111))),
+                _ => Err(()),
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<CbPrefixOp> for u8 {
+    fn from(b: CbPrefixOp) -> Self {
+        match b {
+            CbPrefixOp::RlcR8(p) => 0b0000_0000 | (p as u8),
+        }
+    }
+}
+
+impl std::fmt::Display for CbPrefixOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RlcR8(p) => write!(f, "rlc {}", p),
+        }
+    }
+}
+
 // Z = [], X = +
 #[derive(Debug)]
 enum Op {
@@ -1303,6 +1391,7 @@ enum Op {
     Rst(RstAddr),             // rst addrvec
     Pop(ParamR16Stk),         // pop r16stk
     Push(ParamR16Stk),        // push r16stk
+    Prefix,                   // prefix
     LdhZCZA,                  // ldh [c], a
     LdhZImm8ZA,               // ldh [imm8], a
     LdZImm16ZA,               // ld [imm16], a
@@ -1393,6 +1482,7 @@ impl Op {
                 0b1100_0011 => Some(Self::JpImm16),
                 0b1110_1001 => Some(Self::JpHl),
                 0b1100_1101 => Some(Self::CallImm16),
+                0b1100_1011 => Some(Self::Prefix),
                 0b1110_0010 => Some(Self::LdhZCZA),
                 0b1110_0000 => Some(Self::LdhZImm8ZA),
                 0b1110_1010 => Some(Self::LdZImm16ZA),
@@ -1475,6 +1565,7 @@ impl From<Op> for u8 {
             Op::Rst(addr) => 0b1100_0111 | (addr.idx() << 3),
             Op::Pop(param) => 0b1100_0001 | ((param as u8) << 4),
             Op::Push(param) => 0b1100_0101 | ((param as u8) << 4),
+            Op::Prefix => 0b1100_1011,
             Op::LdhZCZA => 0b1110_0010,
             Op::LdhZImm8ZA => 0b1110_0000,
             Op::LdZImm16ZA => 0b1110_1010,
@@ -1544,6 +1635,7 @@ impl std::fmt::Display for Op {
             Self::Rst(addr) => write!(f, "rst {}", addr),
             Self::Pop(param) => write!(f, "pop {}", param),
             Self::Push(param) => write!(f, "push {}", param),
+            Self::Prefix => write!(f, "prefix"),
             Self::LdhZCZA => write!(f, "ldh [c], a"),
             Self::LdhZImm8ZA => write!(f, "ldh [imm8], a"),
             Self::LdZImm16ZA => write!(f, "ld [imm16], a"),
@@ -1811,6 +1903,9 @@ fn make_mem() -> Vec<u8> {
         FUNC_4_OFFSET.to_le_bytes()[1],
         // ei
         Op::Ei,
+        // rlc l
+        Op::Prefix,
+        CbPrefixOp::RlcR8(ParamR8::L),
         // ret
         Op::Reti,
     );
