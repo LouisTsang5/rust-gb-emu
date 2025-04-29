@@ -201,11 +201,12 @@ impl<'a> Cpu<'a> {
             CbPrefixOp::RlcR8(param) => {
                 let r = mut_r8!(param);
                 let val = *r;
-                let new_val = val << 1;
+                let cf = (val & 0x80) > 0;
+                let val = val.rotate_left(1);
 
-                *r = new_val;
-                self.set_cf((val & 0x80) > 0);
-                self.set_zf(new_val == 0);
+                *r = val;
+                self.set_cf(cf);
+                self.set_zf(val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
