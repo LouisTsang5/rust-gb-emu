@@ -292,6 +292,16 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_nf(false);
             }
+            CbPrefixOp::SrlR8(param) => {
+                let r = mut_r8!(param);
+                let o_val = *r;
+                let n_val = o_val >> 1;
+                *r = n_val;
+                self.set_cf((o_val & 0x01) > 0);
+                self.set_zf(n_val == 0);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
         };
     }
 
@@ -1393,6 +1403,7 @@ enum CbPrefixOp {
     SlaR8(ParamR8),  // sla r8
     SraR8(ParamR8),  // sra r8
     SwapR8(ParamR8), // swap r8
+    SrlR8(ParamR8),  // srl r8
 }
 
 impl TryFrom<u8> for CbPrefixOp {
@@ -1409,7 +1420,8 @@ impl TryFrom<u8> for CbPrefixOp {
                 0b100 => Ok(Self::SlaR8(ParamR8::from(b & 0b0000_0111))),
                 0b101 => Ok(Self::SraR8(ParamR8::from(b & 0b0000_0111))),
                 0b110 => Ok(Self::SwapR8(ParamR8::from(b & 0b0000_0111))),
-                _ => Err(()),
+                0b111 => Ok(Self::SrlR8(ParamR8::from(b & 0b0000_0111))),
+                _ => unreachable!(),
             },
             _ => Err(()),
         }
@@ -1426,6 +1438,7 @@ impl From<CbPrefixOp> for u8 {
             CbPrefixOp::SlaR8(p) => 0b0010_0000 | (p as u8),
             CbPrefixOp::SraR8(p) => 0b0010_1000 | (p as u8),
             CbPrefixOp::SwapR8(p) => 0b0011_0000 | (p as u8),
+            CbPrefixOp::SrlR8(p) => 0b0011_1000 | (p as u8),
         }
     }
 }
@@ -1440,6 +1453,7 @@ impl std::fmt::Display for CbPrefixOp {
             Self::SlaR8(p) => write!(f, "sla {}", p),
             Self::SraR8(p) => write!(f, "sra {}", p),
             Self::SwapR8(p) => write!(f, "swap {}", p),
+            Self::SrlR8(p) => write!(f, "srl {}", p),
         }
     }
 }
@@ -2034,6 +2048,9 @@ fn make_mem() -> Vec<u8> {
         // swap [hl]
         Op::Prefix,
         CbPrefixOp::SwapR8(ParamR8::ZHLZ),
+        // srl [hl]
+        Op::Prefix,
+        CbPrefixOp::SrlR8(ParamR8::ZHLZ),
         // ret
         Op::Reti,
     );
