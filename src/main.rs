@@ -1059,7 +1059,7 @@ impl std::fmt::Display for ParamR8 {
             f,
             "{}",
             match self {
-                Self::B => "a",
+                Self::B => "b",
                 Self::C => "c",
                 Self::D => "d",
                 Self::E => "e",
