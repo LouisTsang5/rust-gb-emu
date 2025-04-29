@@ -323,6 +323,11 @@ impl<'a> Cpu<'a> {
                 self.set_hf(true);
                 self.set_nf(false);
             }
+            CbPrefixOp::ResB3R8(bit, param) => {
+                let r = mut_r8!(param);
+                let mask = !(0x01u8 << bit.val());
+                *r = *r & mask;
+            }
         };
     }
 
@@ -1454,6 +1459,7 @@ enum CbPrefixOp {
     SwapR8(ParamR8),           // swap r8
     SrlR8(ParamR8),            // srl r8
     BitB3R8(ParamB3, ParamR8), // bit b3, r8
+    ResB3R8(ParamB3, ParamR8), // res b3, r8
 }
 
 impl TryFrom<u8> for CbPrefixOp {
@@ -1477,6 +1483,10 @@ impl TryFrom<u8> for CbPrefixOp {
                 ParamB3::from((b & 0b0011_1000) >> 3),
                 ParamR8::from(b & 0b0000_0111),
             )),
+            0b10 => Ok(Self::ResB3R8(
+                ParamB3::from((b & 0b0011_1000) >> 3),
+                ParamR8::from(b & 0b0000_0111),
+            )),
             _ => Err(()),
         }
     }
@@ -1494,6 +1504,7 @@ impl From<CbPrefixOp> for u8 {
             CbPrefixOp::SwapR8(p) => 0b0011_0000 | (p as u8),
             CbPrefixOp::SrlR8(p) => 0b0011_1000 | (p as u8),
             CbPrefixOp::BitB3R8(b, p) => 0b0100_0000 | (b.val() << 3) | (p as u8),
+            CbPrefixOp::ResB3R8(b, p) => 0b1000_0000 | (b.val() << 3) | (p as u8),
         }
     }
 }
@@ -1510,6 +1521,7 @@ impl std::fmt::Display for CbPrefixOp {
             Self::SwapR8(p) => write!(f, "swap {}", p),
             Self::SrlR8(p) => write!(f, "srl {}", p),
             Self::BitB3R8(b, p) => write!(f, "bit {}, {}", b, p),
+            Self::ResB3R8(b, p) => write!(f, "res {}, {}", b, p),
         }
     }
 }
@@ -2110,6 +2122,9 @@ fn make_mem() -> Vec<u8> {
         // bit $03, [hl]
         Op::Prefix,
         CbPrefixOp::BitB3R8(ParamB3::from(7), ParamR8::ZHLZ),
+        // res $03, [hl]
+        Op::Prefix,
+        CbPrefixOp::ResB3R8(ParamB3::from(4), ParamR8::ZHLZ),
         // ret
         Op::Reti,
     );
