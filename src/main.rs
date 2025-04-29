@@ -262,6 +262,16 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_nf(false);
             }
+            CbPrefixOp::SlaR8(param) => {
+                let r = mut_r8!(param);
+                let o_val = *r;
+                let n_val = o_val << 1;
+                *r = n_val;
+                self.set_cf(o_val & 0x80 > 1);
+                self.set_zf(n_val == 0);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
         };
     }
 
@@ -1360,6 +1370,7 @@ enum CbPrefixOp {
     RrcR8(ParamR8), // rrc r8
     RlR8(ParamR8),  // rl r8
     RrR8(ParamR8),  // rr r8
+    SlaR8(ParamR8), // sla r8
 }
 
 impl TryFrom<u8> for CbPrefixOp {
@@ -1373,6 +1384,7 @@ impl TryFrom<u8> for CbPrefixOp {
                 0b001 => Ok(Self::RrcR8(ParamR8::from(b & 0b0000_0111))),
                 0b010 => Ok(Self::RlR8(ParamR8::from(b & 0b0000_0111))),
                 0b011 => Ok(Self::RrR8(ParamR8::from(b & 0b0000_0111))),
+                0b100 => Ok(Self::SlaR8(ParamR8::from(b & 0b0000_0111))),
                 _ => Err(()),
             },
             _ => Err(()),
@@ -1387,6 +1399,7 @@ impl From<CbPrefixOp> for u8 {
             CbPrefixOp::RrcR8(p) => 0b0000_1000 | (p as u8),
             CbPrefixOp::RlR8(p) => 0b0001_0000 | (p as u8),
             CbPrefixOp::RrR8(p) => 0b0001_1000 | (p as u8),
+            CbPrefixOp::SlaR8(p) => 0b0010_0000 | (p as u8),
         }
     }
 }
@@ -1398,6 +1411,7 @@ impl std::fmt::Display for CbPrefixOp {
             Self::RrcR8(p) => write!(f, "rrc {}", p),
             Self::RlR8(p) => write!(f, "rl {}", p),
             Self::RrR8(p) => write!(f, "rr {}", p),
+            Self::SlaR8(p) => write!(f, "sla {}", p),
         }
     }
 }
@@ -1724,7 +1738,7 @@ fn make_mem() -> Vec<u8> {
     const FUNC_3_OFFSET: u16 = 48;
     const FUNC_4_OFFSET: u16 = 64;
     const MAIN_OFFSET: u16 = 128;
-    const DATA_OFFSET: u16 = 210;
+    const DATA_OFFSET: u16 = 0xE0;
     const STACK_OFFSET: u16 = 0xFF + 1;
 
     let mut mem = vec![0u8; MEM_SIZE];
@@ -1983,6 +1997,9 @@ fn make_mem() -> Vec<u8> {
         // rr [hl]
         Op::Prefix,
         CbPrefixOp::RrR8(ParamR8::ZHLZ),
+        // sla [hl]
+        Op::Prefix,
+        CbPrefixOp::SlaR8(ParamR8::ZHLZ),
         // ret
         Op::Reti,
     );
