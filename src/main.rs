@@ -282,6 +282,16 @@ impl<'a> Cpu<'a> {
                 self.set_hf(false);
                 self.set_nf(false);
             }
+            CbPrefixOp::SwapR8(param) => {
+                let r = mut_r8!(param);
+                let o_val = *r;
+                let n_val = ((o_val & 0xF0) >> 4) | ((o_val & 0x0F) << 4);
+                *r = n_val;
+                self.set_zf(n_val == 0);
+                self.set_cf(false);
+                self.set_hf(false);
+                self.set_nf(false);
+            }
         };
     }
 
@@ -1376,12 +1386,13 @@ impl std::fmt::Display for ParamCond {
 /// 0xCB prefixed opertations
 #[derive(Debug, Clone, Copy)]
 enum CbPrefixOp {
-    RlcR8(ParamR8), // rlc r8
-    RrcR8(ParamR8), // rrc r8
-    RlR8(ParamR8),  // rl r8
-    RrR8(ParamR8),  // rr r8
-    SlaR8(ParamR8), // sla r8
-    SraR8(ParamR8), // sra r8
+    RlcR8(ParamR8),  // rlc r8
+    RrcR8(ParamR8),  // rrc r8
+    RlR8(ParamR8),   // rl r8
+    RrR8(ParamR8),   // rr r8
+    SlaR8(ParamR8),  // sla r8
+    SraR8(ParamR8),  // sra r8
+    SwapR8(ParamR8), // swap r8
 }
 
 impl TryFrom<u8> for CbPrefixOp {
@@ -1397,6 +1408,7 @@ impl TryFrom<u8> for CbPrefixOp {
                 0b011 => Ok(Self::RrR8(ParamR8::from(b & 0b0000_0111))),
                 0b100 => Ok(Self::SlaR8(ParamR8::from(b & 0b0000_0111))),
                 0b101 => Ok(Self::SraR8(ParamR8::from(b & 0b0000_0111))),
+                0b110 => Ok(Self::SwapR8(ParamR8::from(b & 0b0000_0111))),
                 _ => Err(()),
             },
             _ => Err(()),
@@ -1413,6 +1425,7 @@ impl From<CbPrefixOp> for u8 {
             CbPrefixOp::RrR8(p) => 0b0001_1000 | (p as u8),
             CbPrefixOp::SlaR8(p) => 0b0010_0000 | (p as u8),
             CbPrefixOp::SraR8(p) => 0b0010_1000 | (p as u8),
+            CbPrefixOp::SwapR8(p) => 0b0011_0000 | (p as u8),
         }
     }
 }
@@ -1426,6 +1439,7 @@ impl std::fmt::Display for CbPrefixOp {
             Self::RrR8(p) => write!(f, "rr {}", p),
             Self::SlaR8(p) => write!(f, "sla {}", p),
             Self::SraR8(p) => write!(f, "sra {}", p),
+            Self::SwapR8(p) => write!(f, "swap {}", p),
         }
     }
 }
@@ -2017,6 +2031,9 @@ fn make_mem() -> Vec<u8> {
         // sra [hl]
         Op::Prefix,
         CbPrefixOp::SraR8(ParamR8::ZHLZ),
+        // swap [hl]
+        Op::Prefix,
+        CbPrefixOp::SwapR8(ParamR8::ZHLZ),
         // ret
         Op::Reti,
     );
