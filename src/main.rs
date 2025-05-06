@@ -135,12 +135,12 @@ impl<'a> Cpu<'a> {
     }
 
     fn reset(&mut self) {
-        self.af.set(0);
-        self.bc.set(0);
-        self.de.set(0);
-        self.hl.set(0);
-        self.sp.set(0);
-        self.pc.set(0);
+        self.af.set(0x0108);
+        self.bc.set(0x0013);
+        self.de.set(0x00D8);
+        self.hl.set(0x014D);
+        self.sp.set(0xFFFE);
+        self.pc.set(0x0100);
         self.halted = false;
         self.ime = false;
     }
