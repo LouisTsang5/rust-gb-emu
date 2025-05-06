@@ -1852,6 +1852,9 @@ impl std::fmt::Display for Op {
     }
 }
 
+const RESULT_VRAM_START: usize = 0x9800;
+const RESULT_VRAM_END: usize = 0x9900;
+
 fn main() {
     let mut mem = vec![0; u16::MAX as usize + 1];
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
@@ -1874,5 +1877,14 @@ fn main() {
             };
         }
         println!();
+    }
+
+    println!("VRAM ASCII:");
+    for chunk in mem[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
+        let s: String = chunk
+            .iter()
+            .map(|&b| if b >= 32 && b <= 126 { b as char } else { '.' })
+            .collect();
+        println!("{}", s);
     }
 }
