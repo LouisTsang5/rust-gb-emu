@@ -1856,14 +1856,24 @@ const RESULT_VRAM_START: usize = 0x9800;
 const RESULT_VRAM_END: usize = 0x9900;
 
 fn main() {
+    // Read ROM
     let mut mem = vec![0; u16::MAX as usize + 1];
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
     let mut f = std::fs::File::open(file_name).unwrap();
     std::io::Read::read(&mut f, &mut mem).unwrap();
 
+    // Listen Event
+    let (tx, rx) = std::sync::mpsc::channel();
+    ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
+
     let mut cpu = Cpu::new(&mut mem);
     while !cpu.halted() {
         cpu.step();
+
+        // Check if SIGINT
+        if rx.try_recv().is_ok() {
+            break;
+        }
     }
 
     // Print result
