@@ -348,7 +348,7 @@ impl<'a> Cpu<'a> {
 
         // Print opcode
         println!(
-            "0x{:04x}: {} (0b{:08b})",
+            "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
             self.pc.get().wrapping_sub(1),
             op,
             byte
@@ -1085,7 +1085,7 @@ impl<'a> Cpu<'a> {
                 let op = CbPrefixOp::try_from(b)
                     .unwrap_or_else(|_| panic!("Invalid 0xCB prefix op code 0x{:02X}", b));
                 println!(
-                    "0x{:04x}: {} (0b{:08b})",
+                    "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
                     self.pc.get().wrapping_sub(1),
                     op,
                     u8::from(op),
