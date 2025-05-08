@@ -1194,6 +1194,39 @@ impl<'a> Cpu<'a> {
         };
     }
 
+    fn handle_interupt(&mut self) {
+        // Dont handle interrupt if IME is reset
+        if !self.ime {
+            return;
+        }
+
+        // Check if there is any interrupt need to be handled
+        let b_ie = self.mem[IE_ADDR];
+        let b_if = self.mem[IF_ADDR];
+        let serviceable_interrupt = b_ie & b_if; // both the corresponding bit in the two bytes are set
+        for bit_offset in 0..T_N_INTERRUPT {
+            // no interrupt to handle
+            if serviceable_interrupt & (1 << bit_offset) == 0 {
+                continue;
+            }
+
+            // Reset IF flag
+            self.mem[IF_ADDR] = b_if & !(1 << bit_offset);
+
+            // Reset IME
+            self.ime = false;
+
+            // Push PC
+            self.mem[self.sp.pre_dec()] = self.pc.get_hi();
+            self.mem[self.sp.pre_dec()] = self.pc.get_lo();
+
+            // Jump to handler
+            let jp_addr = INTERRUPT_HANDLER_BASE_ADDR + (bit_offset * 8);
+            self.pc.set(jp_addr);
+            return;
+        }
+    }
+
     fn step(&mut self) {
         // Execute operation
         self.execute_op();
@@ -1207,8 +1240,16 @@ impl<'a> Cpu<'a> {
                 self.ime_pending = ImePendingStatus::None;
             }
         };
+
+        // Handle Interrupt
+        self.handle_interupt();
     }
 }
+
+const IE_ADDR: usize = 0xFFFF;
+const IF_ADDR: usize = 0xFF0F;
+const T_N_INTERRUPT: u16 = 5;
+const INTERRUPT_HANDLER_BASE_ADDR: u16 = 0x40;
 
 #[derive(Debug, Clone, Copy)]
 enum ParamR8 {
