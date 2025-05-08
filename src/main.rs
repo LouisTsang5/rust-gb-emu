@@ -336,7 +336,7 @@ impl<'a> Cpu<'a> {
         };
     }
 
-    fn step(&mut self) {
+    fn execute_op(&mut self) {
         // Fetch
         let byte = self.mem[self.pc.post_inc()];
 
@@ -1192,6 +1192,11 @@ impl<'a> Cpu<'a> {
                 self.ime_pending = ImePendingStatus::NextInstr;
             }
         };
+    }
+
+    fn step(&mut self) {
+        // Execute operation
+        self.execute_op();
 
         // IME flag handling
         match self.ime_pending {
