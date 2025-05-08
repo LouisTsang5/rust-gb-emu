@@ -1062,7 +1062,11 @@ impl<'a> Cpu<'a> {
                     ParamR16Stk::DE => &mut self.de,
                     ParamR16Stk::HL => &mut self.hl,
                 };
-                r.set_lo(self.mem[self.sp.post_inc()]);
+                if let ParamR16Stk::AF = param {
+                    r.set_lo(self.mem[self.sp.post_inc()] & 0xF0); // The lower nibble of F is always zero
+                } else {
+                    r.set_lo(self.mem[self.sp.post_inc()]);
+                }
                 r.set_hi(self.mem[self.sp.post_inc()]);
             }
             Op::Push(param) => {
