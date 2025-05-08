@@ -742,6 +742,7 @@ impl<'a> Cpu<'a> {
                 let (a1, c1) = lhs.overflowing_add(rhs);
                 let (a2, c2) = a1.overflowing_add(carry);
                 self.af.set_hi(a2);
+                self.set_zf(a2 == 0);
                 self.set_nf(false);
                 self.set_cf(c1 || c2);
                 self.set_hf(hf_add(lhs, rhs) || hf_add(a1, carry));
