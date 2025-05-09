@@ -1,8 +1,8 @@
 const MEM_SIZE: usize = u16::MAX as usize + 1;
 
 enum ReqType {
-    Read { idx: u16 },
-    Write { idx: u16, val: u8 },
+    Read { addr: u16 },
+    Write { addr: u16, val: u8 },
 }
 
 struct Req {
@@ -29,12 +29,12 @@ impl Memory {
 
             // Handle r/w
             match tp {
-                ReqType::Read { idx } => {
-                    let val = self.mem[idx as usize];
+                ReqType::Read { addr } => {
+                    let val = self.mem[addr as usize];
                     res_tx.send(Res::Value(val)).unwrap();
                 }
-                ReqType::Write { idx, val } => {
-                    self.mem[idx as usize] = val;
+                ReqType::Write { addr, val } => {
+                    self.mem[addr as usize] = val;
                     res_tx.send(Res::Written).unwrap();
                 }
             }
@@ -82,12 +82,12 @@ pub struct MemoryHandle {
 }
 
 impl MemoryHandle {
-    pub fn read(&self, idx: u16) -> u8 {
+    pub fn read(&self, addr: u16) -> u8 {
         // Send request
         self.req_tx
             .send(Req {
                 id: self.id,
-                tp: ReqType::Read { idx },
+                tp: ReqType::Read { addr },
             })
             .unwrap();
 
@@ -100,12 +100,12 @@ impl MemoryHandle {
         }
     }
 
-    pub fn write(&self, idx: u16, val: u8) {
+    pub fn write(&self, addr: u16, val: u8) {
         // Send request
         self.req_tx
             .send(Req {
                 id: self.id,
-                tp: ReqType::Write { idx, val },
+                tp: ReqType::Write { addr, val },
             })
             .unwrap();
 
