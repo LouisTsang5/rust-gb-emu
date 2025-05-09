@@ -1,17 +1,11 @@
+mod mem;
+
 #[derive(Debug, Default)]
 struct Reg16([u8; 2]);
 impl Reg16 {
     // // little endian to native u16
     fn get(&self) -> u16 {
         u16::from_be_bytes(self.0)
-    }
-
-    fn mut_hi(&mut self) -> &mut u8 {
-        &mut self.0[0]
-    }
-
-    fn mut_lo(&mut self) -> &mut u8 {
-        &mut self.0[1]
     }
 
     fn get_hi(&self) -> u8 {
@@ -36,20 +30,16 @@ impl Reg16 {
         self.0[1] = val;
     }
 
-    fn post_inc(&mut self) -> usize {
+    fn post_inc(&mut self) -> u16 {
         let retval = self.get();
         self.set(retval.wrapping_add(1));
-        retval as usize
+        retval
     }
 
-    fn pre_dec(&mut self) -> usize {
+    fn pre_dec(&mut self) -> u16 {
         let retval = self.get().wrapping_sub(1);
         self.set(retval);
-        retval as usize
-    }
-
-    fn as_idx(&self) -> usize {
-        self.get() as usize
+        retval
     }
 }
 
@@ -71,10 +61,10 @@ enum ImePendingStatus {
     None,
 }
 
-#[derive(Debug, Default)]
-struct Cpu<'a> {
+#[derive(Debug)]
+struct Cpu {
     // Memory
-    mem: &'a mut [u8],
+    mem: mem::MemoryHandle,
 
     // Registers
     af: Reg16,
@@ -122,7 +112,88 @@ fn hf_sub(lhs: u8, rhs: u8) -> bool {
     (lhs & 0x0Fu8) < (rhs & 0x0Fu8)
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
+    fn get_r8_val(&self, param: ParamR8) -> u8 {
+        match param {
+            ParamR8::A => self.af.get_hi(),
+            ParamR8::B => self.bc.get_hi(),
+            ParamR8::C => self.bc.get_lo(),
+            ParamR8::D => self.de.get_hi(),
+            ParamR8::E => self.de.get_lo(),
+            ParamR8::H => self.hl.get_hi(),
+            ParamR8::L => self.hl.get_lo(),
+            ParamR8::ZHLZ => self.mem.read(self.hl.get()),
+        }
+    }
+
+    fn set_r8_val(&mut self, param: ParamR8, val: u8) {
+        match param {
+            ParamR8::A => self.af.set_hi(val),
+            ParamR8::B => self.bc.set_hi(val),
+            ParamR8::C => self.bc.set_lo(val),
+            ParamR8::D => self.de.set_hi(val),
+            ParamR8::E => self.de.set_lo(val),
+            ParamR8::H => self.hl.set_hi(val),
+            ParamR8::L => self.hl.set_lo(val),
+            ParamR8::ZHLZ => self.mem.write(self.hl.get(), val),
+        };
+    }
+
+    fn get_r16_val(&self, param: ParamR16) -> u16 {
+        match param {
+            ParamR16::BC => self.bc.get(),
+            ParamR16::DE => self.de.get(),
+            ParamR16::HL => self.hl.get(),
+            ParamR16::SP => self.sp.get(),
+        }
+    }
+
+    fn set_r16_val(&mut self, param: ParamR16, val: u16) {
+        match param {
+            ParamR16::BC => self.bc.set(val),
+            ParamR16::DE => self.de.set(val),
+            ParamR16::HL => self.hl.set(val),
+            ParamR16::SP => self.sp.set(val),
+        };
+    }
+
+    fn get_r16_mem_val(&self, param: ParamR16Mem) -> u16 {
+        match param {
+            ParamR16Mem::BC => self.bc.get(),
+            ParamR16Mem::DE => self.de.get(),
+            ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.get(),
+        }
+    }
+
+    fn get_r16_stk_val(&self, param: ParamR16Stk) -> u16 {
+        match param {
+            ParamR16Stk::AF => self.af.get(),
+            ParamR16Stk::BC => self.bc.get(),
+            ParamR16Stk::DE => self.de.get(),
+            ParamR16Stk::HL => self.hl.get(),
+        }
+    }
+
+    fn set_r16_stk_val(&mut self, param: ParamR16Stk, val: u16) {
+        match param {
+            ParamR16Stk::AF => self.af.set(val),
+            ParamR16Stk::BC => self.bc.set(val),
+            ParamR16Stk::DE => self.de.set(val),
+            ParamR16Stk::HL => self.hl.set(val),
+        };
+    }
+
+    fn check_cond(&self, cond: ParamCond) -> bool {
+        match cond {
+            ParamCond::C => self.get_cf(),
+            ParamCond::Nc => !self.get_cf(),
+            ParamCond::Z => self.get_zf(),
+            ParamCond::Nz => !self.get_zf(),
+        }
+    }
+}
+
+impl Cpu {
     flag_fns! {
         get_zf => set_zf => 7, // Zero Flag 0b1000_0000
         get_nf => set_nf => 6, // Subtraction Flag 0b0100_0000
@@ -172,66 +243,42 @@ impl<'a> Cpu<'a> {
         );
     }
 
-    fn new(mem: &'a mut [u8]) -> Self {
+    fn new(mem: mem::MemoryHandle) -> Self {
         let mut cpu = Cpu {
             mem,
-            ..Default::default()
+            af: Reg16::default(),
+            bc: Reg16::default(),
+            de: Reg16::default(),
+            hl: Reg16::default(),
+            sp: Reg16::default(),
+            pc: Reg16::default(),
+            halted: false,
+            ime_pending: ImePendingStatus::default(),
+            ime: false,
         };
         cpu.reset();
         cpu
     }
 
     fn step_cb_op(&mut self, op: CbPrefixOp) {
-        macro_rules! mut_r8 {
-            ($r8: expr) => {
-                match $r8 {
-                    ParamR8::A => self.af.mut_hi(),
-                    ParamR8::B => self.bc.mut_hi(),
-                    ParamR8::C => self.bc.mut_lo(),
-                    ParamR8::D => self.de.mut_hi(),
-                    ParamR8::E => self.de.mut_lo(),
-                    ParamR8::H => self.hl.mut_hi(),
-                    ParamR8::L => self.hl.mut_lo(),
-                    ParamR8::ZHLZ => &mut self.mem[self.hl.as_idx()],
-                }
-            };
-        }
-
-        macro_rules! val_r8 {
-            ($r8: expr) => {
-                match $r8 {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                }
-            };
-        }
-
         match op {
             CbPrefixOp::RlcR8(param) => {
-                let r = mut_r8!(param);
-                let val = *r;
+                let val = self.get_r8_val(param);
                 let cf = (val & 0x80) > 0;
                 let val = val.rotate_left(1);
 
-                *r = val;
+                self.set_r8_val(param, val);
                 self.set_cf(cf);
                 self.set_zf(val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::RrcR8(param) => {
-                let r = mut_r8!(param);
-                let val = *r;
+                let val = self.get_r8_val(param);
                 let cf = (val & 0x01) > 0;
                 let val = val.rotate_right(1);
 
-                *r = val;
+                self.set_r8_val(param, val);
                 self.set_cf(cf);
                 self.set_zf(val == 0);
                 self.set_hf(false);
@@ -239,8 +286,7 @@ impl<'a> Cpu<'a> {
             }
             CbPrefixOp::RlR8(param) => {
                 let o_cf = self.get_cf();
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
 
                 // after rotation
                 let n_val = o_val << 1
@@ -251,7 +297,7 @@ impl<'a> Cpu<'a> {
                 let n_cf = (o_val & 0x80) > 0;
 
                 // set val
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_cf(n_cf);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
@@ -259,8 +305,7 @@ impl<'a> Cpu<'a> {
             }
             CbPrefixOp::RrR8(param) => {
                 let o_cf = self.get_cf();
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
 
                 // after rotation
                 let n_val = o_val >> 1
@@ -271,74 +316,70 @@ impl<'a> Cpu<'a> {
                 let n_cf = (o_val & 0x01) > 0;
 
                 // set val
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_cf(n_cf);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::SlaR8(param) => {
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
                 let n_val = o_val << 1;
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_cf(o_val & 0x80 > 0);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::SraR8(param) => {
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
                 let n_val = (o_val >> 1) | (o_val & 0x80); // preserve bit 7
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_cf(o_val & 0x01 > 0);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::SwapR8(param) => {
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
                 let n_val = ((o_val & 0xF0) >> 4) | ((o_val & 0x0F) << 4);
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_zf(n_val == 0);
                 self.set_cf(false);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::SrlR8(param) => {
-                let r = mut_r8!(param);
-                let o_val = *r;
+                let o_val = self.get_r8_val(param);
                 let n_val = o_val >> 1;
-                *r = n_val;
+                self.set_r8_val(param, n_val);
                 self.set_cf((o_val & 0x01) > 0);
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
             }
             CbPrefixOp::BitB3R8(bit, param) => {
-                let val = val_r8!(param);
+                let val = self.get_r8_val(param);
                 self.set_zf(((val >> bit.val()) & 0x01) == 0);
                 self.set_hf(true);
                 self.set_nf(false);
             }
             CbPrefixOp::ResB3R8(bit, param) => {
-                let r = mut_r8!(param);
+                let val = self.get_r8_val(param);
                 let mask = !(0x01u8 << bit.val());
-                *r = *r & mask;
+                self.set_r8_val(param, val & mask);
             }
             CbPrefixOp::SetB3R8(bit, param) => {
-                let r = mut_r8!(param);
+                let val = self.get_r8_val(param);
                 let mask = 0x01u8 << bit.val();
-                *r = *r | mask;
+                self.set_r8_val(param, val | mask);
             }
         };
     }
 
     fn execute_op(&mut self) {
         // Fetch
-        let byte = self.mem[self.pc.post_inc()];
+        let byte = self.mem.read(self.pc.post_inc());
 
         // Decode
         let op = match Op::try_from(byte) {
@@ -359,28 +400,18 @@ impl<'a> Cpu<'a> {
             Op::Nop => {}
             Op::LdR16Imm16(param) => {
                 // Read 2 bytes
-                let first = self.mem[self.pc.post_inc()];
-                let second = self.mem[self.pc.post_inc()];
+                let first = self.mem.read(self.pc.post_inc());
+                let second = self.mem.read(self.pc.post_inc());
 
                 // Write to register
-                match param {
-                    ParamR16::BC => &mut self.bc,
-                    ParamR16::DE => &mut self.de,
-                    ParamR16::HL => &mut self.hl,
-                    ParamR16::SP => &mut self.sp,
-                }
-                .set(u16::from_le_bytes([first, second]));
+                self.set_r16_val(param, u16::from_le_bytes([first, second]));
             }
             Op::LdZR16MemZA(param) => {
                 // Load index
-                let idx = match param {
-                    ParamR16Mem::BC => self.bc.as_idx(),
-                    ParamR16Mem::DE => self.de.as_idx(),
-                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.as_idx(),
-                };
+                let idx = self.get_r16_mem_val(param);
 
                 // Write a to addr
-                self.mem[idx] = self.af.get_hi();
+                self.mem.write(idx, self.af.get_hi());
 
                 // Increment or decrement hl
                 match param {
@@ -391,14 +422,10 @@ impl<'a> Cpu<'a> {
             }
             Op::LdAZR16MemZ(param) => {
                 // Load index
-                let idx = match param {
-                    ParamR16Mem::BC => self.bc.as_idx(),
-                    ParamR16Mem::DE => self.de.as_idx(),
-                    ParamR16Mem::HLD | ParamR16Mem::HLI => self.hl.as_idx(),
-                };
+                let idx = self.get_r16_mem_val(param);
 
                 // Write byte pointed to a
-                self.af.set_hi(self.mem[idx]);
+                self.af.set_hi(self.mem.read(idx));
 
                 // Increment or decrement hl
                 match param {
@@ -409,40 +436,25 @@ impl<'a> Cpu<'a> {
             }
             Op::LdZImm16ZSp => {
                 // Read next 2 bytes
-                let first = self.mem[self.pc.post_inc()];
-                let second = self.mem[self.pc.post_inc()];
-                let idx = u16::from_le_bytes([first, second]) as usize;
+                let first = self.mem.read(self.pc.post_inc());
+                let second = self.mem.read(self.pc.post_inc());
+                let idx = u16::from_le_bytes([first, second]);
 
                 // Use it as index to write val of sp
-                self.mem[idx] = self.sp.get_lo();
-                self.mem[idx + 1] = self.sp.get_hi();
+                self.mem.write(idx, self.sp.get_lo());
+                self.mem.write(idx + 1, self.sp.get_hi());
             }
             Op::IncR16(param) => {
-                let r = match param {
-                    ParamR16::BC => &mut self.bc,
-                    ParamR16::DE => &mut self.de,
-                    ParamR16::HL => &mut self.hl,
-                    ParamR16::SP => &mut self.sp,
-                };
-                r.set(r.get().wrapping_add(1));
+                let val = self.get_r16_val(param);
+                self.set_r16_val(param, val.wrapping_add(1));
             }
             Op::DecR16(param) => {
-                let r = match param {
-                    ParamR16::BC => &mut self.bc,
-                    ParamR16::DE => &mut self.de,
-                    ParamR16::HL => &mut self.hl,
-                    ParamR16::SP => &mut self.sp,
-                };
-                r.set(r.get().wrapping_sub(1));
+                let val = self.get_r16_val(param);
+                self.set_r16_val(param, val.wrapping_sub(1));
             }
             Op::AddHlR16(param) => {
                 let hl_val = self.hl.get();
-                let add_num: u16 = match param {
-                    ParamR16::BC => self.bc.get(),
-                    ParamR16::DE => self.de.get(),
-                    ParamR16::HL => self.hl.get(),
-                    ParamR16::SP => self.sp.get(),
-                };
+                let add_num: u16 = self.get_r16_val(param);
 
                 // Addition
                 let (val, cf) = hl_val.overflowing_add(add_num);
@@ -455,29 +467,11 @@ impl<'a> Cpu<'a> {
             }
             Op::IncR8(param) => {
                 // Read the byte
-                let old_val = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let old_val = self.get_r8_val(param);
 
                 // Write the byte
                 let new_val = old_val.wrapping_add(1);
-                match param {
-                    ParamR8::A => self.af.set_hi(new_val),
-                    ParamR8::B => self.bc.set_hi(new_val),
-                    ParamR8::C => self.bc.set_lo(new_val),
-                    ParamR8::D => self.de.set_hi(new_val),
-                    ParamR8::E => self.de.set_lo(new_val),
-                    ParamR8::H => self.hl.set_hi(new_val),
-                    ParamR8::L => self.hl.set_lo(new_val),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = new_val,
-                };
+                self.set_r8_val(param, new_val);
 
                 // Set Flags
                 self.set_zf(new_val == 0);
@@ -486,29 +480,11 @@ impl<'a> Cpu<'a> {
             }
             Op::DecR8(param) => {
                 // Read the byte
-                let old_val = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let old_val = self.get_r8_val(param);
 
                 // Write the byte
                 let new_val = old_val.wrapping_sub(1);
-                match param {
-                    ParamR8::A => self.af.set_hi(new_val),
-                    ParamR8::B => self.bc.set_hi(new_val),
-                    ParamR8::C => self.bc.set_lo(new_val),
-                    ParamR8::D => self.de.set_hi(new_val),
-                    ParamR8::E => self.de.set_lo(new_val),
-                    ParamR8::H => self.hl.set_hi(new_val),
-                    ParamR8::L => self.hl.set_lo(new_val),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = new_val,
-                };
+                self.set_r8_val(param, new_val);
 
                 // Set Flags
                 self.set_zf(new_val == 0);
@@ -516,17 +492,8 @@ impl<'a> Cpu<'a> {
                 self.set_hf(hf_sub(old_val, 1)); // 5th bit borrow
             }
             Op::LdR8Imm8(param) => {
-                let val = self.mem[self.pc.post_inc()];
-                match param {
-                    ParamR8::A => self.af.set_hi(val),
-                    ParamR8::B => self.bc.set_hi(val),
-                    ParamR8::C => self.bc.set_lo(val),
-                    ParamR8::D => self.de.set_hi(val),
-                    ParamR8::E => self.de.set_lo(val),
-                    ParamR8::H => self.hl.set_hi(val),
-                    ParamR8::L => self.hl.set_lo(val),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = val,
-                };
+                let val = self.mem.read(self.pc.post_inc());
+                self.set_r8_val(param, val);
             }
             Op::Rlca => {
                 // Rotate A
@@ -640,7 +607,7 @@ impl<'a> Cpu<'a> {
             }
             Op::JrImm8 => {
                 // Read next byte as 2's complement relative position
-                let n = self.mem[self.pc.post_inc()];
+                let n = self.mem.read(self.pc.post_inc());
                 let rlt = unsafe { *(&n as *const u8 as *const i8) };
 
                 // Update pc
@@ -649,7 +616,7 @@ impl<'a> Cpu<'a> {
             }
             Op::JrCcImm8(cond) => {
                 // Read next byte
-                let n = self.mem[self.pc.post_inc()];
+                let n = self.mem.read(self.pc.post_inc());
 
                 // Check condition
                 let is_jp = match cond {
@@ -674,29 +641,8 @@ impl<'a> Cpu<'a> {
                 self.halted = true;
             }
             Op::LdR8R8(dest, src) => {
-                // Read val
-                let val = match src {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
-
-                // Set val
-                match dest {
-                    ParamR8::A => self.af.set_hi(val),
-                    ParamR8::B => self.bc.set_hi(val),
-                    ParamR8::C => self.bc.set_lo(val),
-                    ParamR8::D => self.de.set_hi(val),
-                    ParamR8::E => self.de.set_lo(val),
-                    ParamR8::H => self.hl.set_hi(val),
-                    ParamR8::L => self.hl.set_lo(val),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()] = val,
-                };
+                let val = self.get_r8_val(src);
+                self.set_r8_val(dest, val);
             }
             Op::Halt => {
                 // TODO: place holder
@@ -704,16 +650,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AddAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let (a, cf) = lhs.overflowing_add(rhs);
 
                 self.af.set_hi(a);
@@ -724,16 +661,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AdcAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let carry = match self.get_cf() {
                     true => 1,
                     false => 0,
@@ -749,16 +677,7 @@ impl<'a> Cpu<'a> {
             }
             Op::SubAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let (a, cf) = lhs.overflowing_sub(rhs);
 
                 self.af.set_hi(a);
@@ -769,16 +688,7 @@ impl<'a> Cpu<'a> {
             }
             Op::SbcAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let carry = match self.get_cf() {
                     true => 1,
                     false => 0,
@@ -794,16 +704,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AndAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let a = lhs & rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -813,16 +714,7 @@ impl<'a> Cpu<'a> {
             }
             Op::XorAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let a = lhs ^ rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -832,16 +724,7 @@ impl<'a> Cpu<'a> {
             }
             Op::OrAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let a = lhs | rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -851,16 +734,7 @@ impl<'a> Cpu<'a> {
             }
             Op::CpAR8(param) => {
                 let lhs = self.af.get_hi();
-                let rhs = match param {
-                    ParamR8::A => self.af.get_hi(),
-                    ParamR8::B => self.bc.get_hi(),
-                    ParamR8::C => self.bc.get_lo(),
-                    ParamR8::D => self.de.get_hi(),
-                    ParamR8::E => self.de.get_lo(),
-                    ParamR8::H => self.hl.get_hi(),
-                    ParamR8::L => self.hl.get_lo(),
-                    ParamR8::ZHLZ => self.mem[self.hl.as_idx()],
-                };
+                let rhs = self.get_r8_val(param);
                 let (val, cf) = lhs.overflowing_sub(rhs);
                 self.set_zf(val == 0);
                 self.set_nf(true);
@@ -869,7 +743,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let (a, cf) = lhs.overflowing_add(rhs);
 
                 self.af.set_hi(a);
@@ -880,7 +754,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AdcAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let carry = match self.get_cf() {
                     true => 1,
                     false => 0,
@@ -896,7 +770,7 @@ impl<'a> Cpu<'a> {
             }
             Op::SubAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let (a, cf) = lhs.overflowing_sub(rhs);
 
                 self.af.set_hi(a);
@@ -907,7 +781,7 @@ impl<'a> Cpu<'a> {
             }
             Op::SbcAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let carry = match self.get_cf() {
                     true => 1,
                     false => 0,
@@ -923,7 +797,7 @@ impl<'a> Cpu<'a> {
             }
             Op::AndAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let a = lhs & rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -933,7 +807,7 @@ impl<'a> Cpu<'a> {
             }
             Op::XorAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let a = lhs ^ rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -943,7 +817,7 @@ impl<'a> Cpu<'a> {
             }
             Op::OrAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let a = lhs | rhs;
                 self.af.set_hi(a);
                 self.set_zf(a == 0);
@@ -953,7 +827,7 @@ impl<'a> Cpu<'a> {
             }
             Op::CpAImm8 => {
                 let lhs = self.af.get_hi();
-                let rhs = self.mem[self.pc.post_inc()];
+                let rhs = self.mem.read(self.pc.post_inc());
                 let (val, cf) = lhs.overflowing_sub(rhs);
                 self.set_zf(val == 0);
                 self.set_nf(true);
@@ -961,37 +835,27 @@ impl<'a> Cpu<'a> {
                 self.set_cf(cf);
             }
             Op::RetCond(cond) => {
-                let is_jp = match cond {
-                    ParamCond::C => self.get_cf(),
-                    ParamCond::Nc => !self.get_cf(),
-                    ParamCond::Z => self.get_zf(),
-                    ParamCond::Nz => !self.get_zf(),
-                };
+                let is_jp = self.check_cond(cond);
                 if is_jp {
-                    self.pc.set_lo(self.mem[self.sp.post_inc()]);
-                    self.pc.set_hi(self.mem[self.sp.post_inc()]);
+                    self.pc.set_lo(self.mem.read(self.sp.post_inc()));
+                    self.pc.set_hi(self.mem.read(self.sp.post_inc()));
                 }
             }
             Op::Ret => {
-                self.pc.set_lo(self.mem[self.sp.post_inc()]);
-                self.pc.set_hi(self.mem[self.sp.post_inc()]);
+                self.pc.set_lo(self.mem.read(self.sp.post_inc()));
+                self.pc.set_hi(self.mem.read(self.sp.post_inc()));
             }
             Op::Reti => {
                 self.ime_pending = ImePendingStatus::ThisInstr;
-                self.pc.set_lo(self.mem[self.sp.post_inc()]);
-                self.pc.set_hi(self.mem[self.sp.post_inc()]);
+                self.pc.set_lo(self.mem.read(self.sp.post_inc()));
+                self.pc.set_hi(self.mem.read(self.sp.post_inc()));
             }
             Op::JpCondImm16(cond) => {
-                let is_jp = match cond {
-                    ParamCond::C => self.get_cf(),
-                    ParamCond::Nc => !self.get_cf(),
-                    ParamCond::Z => self.get_zf(),
-                    ParamCond::Nz => !self.get_zf(),
-                };
+                let is_jp = self.check_cond(cond);
 
                 let jp_addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
                 ]);
 
                 if is_jp {
@@ -1000,8 +864,8 @@ impl<'a> Cpu<'a> {
             }
             Op::JpImm16 => {
                 let jp_addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
                 ]);
                 self.pc.set(jp_addr);
             }
@@ -1009,24 +873,19 @@ impl<'a> Cpu<'a> {
                 self.pc.set(self.hl.get());
             }
             Op::CallCondImm16(cond) => {
-                let is_jp = match cond {
-                    ParamCond::C => self.get_cf(),
-                    ParamCond::Nc => !self.get_cf(),
-                    ParamCond::Z => self.get_zf(),
-                    ParamCond::Nz => !self.get_zf(),
-                };
+                let is_jp = self.check_cond(cond);
 
                 // Get the jump address
                 let jp_addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
                 ]);
 
                 if is_jp {
                     // Push the current PC to stack
                     let cur_pc = self.pc.get().to_le_bytes();
-                    self.mem[self.sp.pre_dec()] = cur_pc[1];
-                    self.mem[self.sp.pre_dec()] = cur_pc[0];
+                    self.mem.write(self.sp.pre_dec(), cur_pc[1]);
+                    self.mem.write(self.sp.pre_dec(), cur_pc[0]);
 
                     // Update PC
                     self.pc.set(jp_addr);
@@ -1035,14 +894,14 @@ impl<'a> Cpu<'a> {
             Op::CallImm16 => {
                 // Get the jump address
                 let jp_addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
                 ]);
 
                 // Push the current PC to stack
                 let cur_pc = self.pc.get().to_le_bytes();
-                self.mem[self.sp.pre_dec()] = cur_pc[1];
-                self.mem[self.sp.pre_dec()] = cur_pc[0];
+                self.mem.write(self.sp.pre_dec(), cur_pc[1]);
+                self.mem.write(self.sp.pre_dec(), cur_pc[0]);
 
                 // Update PC
                 self.pc.set(jp_addr);
@@ -1050,38 +909,28 @@ impl<'a> Cpu<'a> {
             Op::Rst(addr) => {
                 // Push the current PC to stack
                 let cur_pc = self.pc.get().to_le_bytes();
-                self.mem[self.sp.pre_dec()] = cur_pc[1];
-                self.mem[self.sp.pre_dec()] = cur_pc[0];
+                self.mem.write(self.sp.pre_dec(), cur_pc[1]);
+                self.mem.write(self.sp.pre_dec(), cur_pc[0]);
 
                 // Update PC
                 self.pc.set(addr.addr());
             }
             Op::Pop(param) => {
-                let r = match param {
-                    ParamR16Stk::AF => &mut self.af,
-                    ParamR16Stk::BC => &mut self.bc,
-                    ParamR16Stk::DE => &mut self.de,
-                    ParamR16Stk::HL => &mut self.hl,
+                let lo = match param {
+                    ParamR16Stk::AF => self.mem.read(self.sp.post_inc()) & 0xF0, // The lower nibble of F is always zero
+                    _ => self.mem.read(self.sp.post_inc()),
                 };
-                if let ParamR16Stk::AF = param {
-                    r.set_lo(self.mem[self.sp.post_inc()] & 0xF0); // The lower nibble of F is always zero
-                } else {
-                    r.set_lo(self.mem[self.sp.post_inc()]);
-                }
-                r.set_hi(self.mem[self.sp.post_inc()]);
+                let hi = self.mem.read(self.sp.post_inc());
+                let val = u16::from_le_bytes([lo, hi]);
+                self.set_r16_stk_val(param, val);
             }
             Op::Push(param) => {
-                let r = match param {
-                    ParamR16Stk::AF => &self.af,
-                    ParamR16Stk::BC => &self.bc,
-                    ParamR16Stk::DE => &self.de,
-                    ParamR16Stk::HL => &self.hl,
-                };
-                self.mem[self.sp.pre_dec()] = r.get_hi();
-                self.mem[self.sp.pre_dec()] = r.get_lo();
+                let val = self.get_r16_stk_val(param).to_le_bytes();
+                self.mem.write(self.sp.pre_dec(), val[1]);
+                self.mem.write(self.sp.pre_dec(), val[0]);
             }
             Op::Prefix => {
-                let b = self.mem[self.pc.post_inc()];
+                let b = self.mem.read(self.pc.post_inc());
                 let op = CbPrefixOp::try_from(b)
                     .unwrap_or_else(|_| panic!("Invalid 0xCB prefix op code 0x{:02X}", b));
                 println!(
@@ -1093,37 +942,37 @@ impl<'a> Cpu<'a> {
                 self.step_cb_op(op);
             }
             Op::LdhZCZA => {
-                let addr = 0xFF00 + self.bc.get_lo() as usize;
-                self.mem[addr] = self.af.get_hi();
+                let addr = 0xFF00 + self.bc.get_lo() as u16;
+                self.mem.write(addr, self.af.get_hi());
             }
             Op::LdhZImm8ZA => {
-                let addr = 0xFF00 + self.mem[self.pc.post_inc()] as usize;
-                self.mem[addr] = self.af.get_hi();
+                let addr = 0xFF00 + self.mem.read(self.pc.post_inc()) as u16;
+                self.mem.write(addr, self.af.get_hi());
             }
             Op::LdZImm16ZA => {
                 let addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
-                ]) as usize;
-                self.mem[addr] = self.af.get_hi();
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
+                ]);
+                self.mem.write(addr, self.af.get_hi());
             }
             Op::LdhAZCZ => {
-                let addr = 0xFF00 + self.bc.get_lo() as usize;
-                self.af.set_hi(self.mem[addr]);
+                let addr = 0xFF00 + self.bc.get_lo() as u16;
+                self.af.set_hi(self.mem.read(addr));
             }
             Op::LdhAZImm8Z => {
-                let addr = 0xFF00 + self.mem[self.pc.post_inc()] as usize;
-                self.af.set_hi(self.mem[addr]);
+                let addr = 0xFF00 + self.mem.read(self.pc.post_inc()) as u16;
+                self.af.set_hi(self.mem.read(addr));
             }
             Op::LdAZImm16Z => {
                 let addr = u16::from_le_bytes([
-                    self.mem[self.pc.post_inc()],
-                    self.mem[self.pc.post_inc()],
-                ]) as usize;
-                self.af.set_hi(self.mem[addr]);
+                    self.mem.read(self.pc.post_inc()),
+                    self.mem.read(self.pc.post_inc()),
+                ]);
+                self.af.set_hi(self.mem.read(addr));
             }
             Op::AddSpImm8 => {
-                let imm8 = self.mem[self.pc.post_inc()];
+                let imm8 = self.mem.read(self.pc.post_inc());
                 let splo = self.sp.get_lo();
                 let sphi = self.sp.get_hi();
 
@@ -1153,7 +1002,7 @@ impl<'a> Cpu<'a> {
                 self.set_nf(false);
             }
             Op::LdHlSpXImm8 => {
-                let imm8 = self.mem[self.pc.post_inc()];
+                let imm8 = self.mem.read(self.pc.post_inc());
                 let splo = self.sp.get_lo();
                 let sphi = self.sp.get_hi();
 
@@ -1201,8 +1050,8 @@ impl<'a> Cpu<'a> {
         }
 
         // Check if there is any interrupt need to be handled
-        let b_ie = self.mem[IE_ADDR];
-        let b_if = self.mem[IF_ADDR];
+        let b_ie = self.mem.read(IE_ADDR);
+        let b_if = self.mem.read(IF_ADDR);
         let serviceable_interrupt = b_ie & b_if; // both the corresponding bit in the two bytes are set
         for bit_offset in 0..T_N_INTERRUPT {
             // no interrupt to handle
@@ -1211,14 +1060,14 @@ impl<'a> Cpu<'a> {
             }
 
             // Reset IF flag
-            self.mem[IF_ADDR] = b_if & !(1 << bit_offset);
+            self.mem.write(IF_ADDR, b_if & !(1 << bit_offset));
 
             // Reset IME
             self.ime = false;
 
             // Push PC
-            self.mem[self.sp.pre_dec()] = self.pc.get_hi();
-            self.mem[self.sp.pre_dec()] = self.pc.get_lo();
+            self.mem.write(self.sp.pre_dec(), self.pc.get_hi());
+            self.mem.write(self.sp.pre_dec(), self.pc.get_lo());
 
             // Jump to handler
             let jp_addr = INTERRUPT_HANDLER_BASE_ADDR + (bit_offset * 8);
@@ -1246,8 +1095,8 @@ impl<'a> Cpu<'a> {
     }
 }
 
-const IE_ADDR: usize = 0xFFFF;
-const IF_ADDR: usize = 0xFF0F;
+const IE_ADDR: u16 = 0xFFFF;
+const IF_ADDR: u16 = 0xFF0F;
 const T_N_INTERRUPT: u16 = 5;
 const INTERRUPT_HANDLER_BASE_ADDR: u16 = 0x40;
 
@@ -1317,15 +1166,6 @@ impl RstAddr {
             panic!("Invalid rst index {:#X}", idx);
         }
         RstAddr { idx }
-    }
-
-    pub fn from_addr(addr: u16) -> Self {
-        if (addr % 8 != 0) || (addr / 8) > 7 {
-            panic!("Invalid rst address {:#X}", addr);
-        }
-        RstAddr {
-            idx: (addr / 8) as u8,
-        }
     }
 }
 
@@ -1905,19 +1745,31 @@ impl std::fmt::Display for Op {
 
 const RESULT_VRAM_START: usize = 0x9800;
 const RESULT_VRAM_END: usize = 0x9900;
+const MEM_DUMP_FILE: &str = "memdump";
 
 fn main() {
-    // Read ROM
-    let mut mem = vec![0; u16::MAX as usize + 1];
+    // Read Mem
+    let (t_mem, mem_handles) = mem::Memory::make(2);
+    let mut mem_handles: Vec<Option<mem::MemoryHandle>> =
+        mem_handles.into_iter().map(|h| Some(h)).collect();
+    let mem = mem_handles[0].take().unwrap();
+    let tmp_handle = mem_handles[1].take().unwrap();
+
+    // Write ROM to mem
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
-    let mut f = std::fs::File::open(file_name).unwrap();
-    std::io::Read::read(&mut f, &mut mem).unwrap();
+    {
+        let f = std::io::BufReader::new(std::fs::File::open(file_name).unwrap());
+        for (i, byte) in std::io::Read::bytes(f).enumerate() {
+            let byte = byte.unwrap();
+            mem.write(i as u16, byte);
+        }
+    }
 
     // Listen Event
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
 
-    let mut cpu = Cpu::new(&mut mem);
+    let mut cpu = Cpu::new(mem);
     while !cpu.halted() {
         cpu.step();
 
@@ -1927,21 +1779,18 @@ fn main() {
         }
     }
 
-    // Print result
+    // // Print result
     cpu.print_reg();
-    for (start, end) in [(0, 0xFF + 1), (0xFF00, 0xFF0F + 1)] {
-        println!("0x{0:04X}({0}) ... 0x{1:04X}({1})", start, end - 1);
-        for (i, &b) in mem[start..end].iter().enumerate() {
-            match (i + 1) % 16 == 0 {
-                false => print!("0x{:02X} ", b),
-                true => println!("0x{:02X} - 0x{:04X}", b, i + start),
-            };
-        }
-        println!();
+
+    // Dump Memory
+    let mut dmem = [0u8; u16::MAX as usize + 1];
+    for i in 0..dmem.len() {
+        dmem[i] = tmp_handle.read(i as u16);
     }
+    std::fs::write(MEM_DUMP_FILE, &dmem).unwrap();
 
     println!("VRAM ASCII:");
-    for chunk in mem[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
+    for chunk in dmem[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
         let s: String = chunk
             .iter()
             .map(|&b| if b >= 32 && b <= 126 { b as char } else { '.' })
