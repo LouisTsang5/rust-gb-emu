@@ -1749,11 +1749,7 @@ const MEM_DUMP_FILE: &str = "memdump";
 
 fn main() {
     // Read Mem
-    let (t_mem, mem_handles) = mem::Memory::make(2);
-    let mut mem_handles: Vec<Option<mem::MemoryHandle>> =
-        mem_handles.into_iter().map(|h| Some(h)).collect();
-    let mem = mem_handles[0].take().unwrap();
-    let tmp_handle = mem_handles[1].take().unwrap();
+    let mut mem = mem::make_mem();
 
     // Write ROM to mem
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
@@ -1769,7 +1765,7 @@ fn main() {
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
 
-    let mut cpu = Cpu::new(mem);
+    let mut cpu = Cpu::new(mem.clone());
     while !cpu.halted() {
         cpu.step();
 
@@ -1783,14 +1779,10 @@ fn main() {
     cpu.print_reg();
 
     // Dump Memory
-    let mut dmem = [0u8; u16::MAX as usize + 1];
-    for i in 0..dmem.len() {
-        dmem[i] = tmp_handle.read(i as u16);
-    }
-    std::fs::write(MEM_DUMP_FILE, &dmem).unwrap();
+    std::fs::write(MEM_DUMP_FILE, &*mem.inner()).unwrap();
 
     println!("VRAM ASCII:");
-    for chunk in dmem[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
+    for chunk in mem.inner()[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
         let s: String = chunk
             .iter()
             .map(|&b| if b >= 32 && b <= 126 { b as char } else { '.' })
