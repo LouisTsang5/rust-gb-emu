@@ -1746,7 +1746,7 @@ impl std::fmt::Display for Op {
 
 fn main() {
     // Read Mem
-    let mut mem = mem::make_mem();
+    let mem = mem::make_mem();
 
     // Write ROM to mem
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
