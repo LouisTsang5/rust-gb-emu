@@ -16,7 +16,7 @@ impl MemoryHandle {
         self.mem.borrow()[addr as usize]
     }
 
-    pub fn write(&mut self, addr: u16, val: u8) {
+    pub fn write(&self, addr: u16, val: u8) {
         self.mem.borrow_mut()[addr as usize] = val;
     }
 
