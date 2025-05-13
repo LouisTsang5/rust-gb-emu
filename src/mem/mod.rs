@@ -1,4 +1,4 @@
-const MEM_SIZE: usize = u16::MAX as usize + 1;
+use crate::constants::MEM_SIZE;
 
 pub fn make_mem() -> MemoryHandle {
     MemoryHandle {

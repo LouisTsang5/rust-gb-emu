@@ -1,3 +1,9 @@
+use constants::{
+    IE_ADDR, IF_ADDR, INTERRUPT_HANDLER_BASE_ADDR, MEM_DUMP_FILE, RESULT_VRAM_END,
+    RESULT_VRAM_START, T_N_INTERRUPT,
+};
+
+mod constants;
 mod mem;
 
 #[derive(Debug, Default)]
@@ -1095,11 +1101,6 @@ impl Cpu {
     }
 }
 
-const IE_ADDR: u16 = 0xFFFF;
-const IF_ADDR: u16 = 0xFF0F;
-const T_N_INTERRUPT: u16 = 5;
-const INTERRUPT_HANDLER_BASE_ADDR: u16 = 0x40;
-
 #[derive(Debug, Clone, Copy)]
 enum ParamR8 {
     B = 0b000,
@@ -1742,10 +1743,6 @@ impl std::fmt::Display for Op {
         }
     }
 }
-
-const RESULT_VRAM_START: usize = 0x9800;
-const RESULT_VRAM_END: usize = 0x9900;
-const MEM_DUMP_FILE: &str = "memdump";
 
 fn main() {
     // Read Mem
