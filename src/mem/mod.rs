@@ -1,26 +1,45 @@
-use crate::constants::MEM_SIZE;
+use crate::{
+    constants::{DIV_ADDR, MEM_SIZE, TAC_ADDR, TIMA_ADDR, TMA_ADDR},
+    timer::TimerHandle,
+};
 
-pub fn make_mem() -> MemoryHandle {
-    MemoryHandle {
-        mem: std::rc::Rc::new(std::cell::RefCell::new([0; MEM_SIZE])),
-    }
+pub fn make_mem(timer: TimerHandle) -> MemoryHandle {
+    let mem = std::rc::Rc::new(std::cell::RefCell::new(Memory {
+        inner: [0; MEM_SIZE],
+        timer,
+    }));
+    MemoryHandle { mem }
+}
+
+#[derive(Debug)]
+pub struct Memory {
+    inner: [u8; MEM_SIZE],
+    timer: TimerHandle,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemoryHandle {
-    mem: std::rc::Rc<std::cell::RefCell<[u8; MEM_SIZE]>>,
+    mem: std::rc::Rc<std::cell::RefCell<Memory>>,
 }
 
 impl MemoryHandle {
     pub fn read(&self, addr: u16) -> u8 {
-        self.mem.borrow()[addr as usize]
+        match addr {
+            DIV_ADDR => self.mem.borrow().timer.get_div(),
+            TIMA_ADDR => self.mem.borrow().timer.get_tima(),
+            TMA_ADDR => self.mem.borrow().timer.get_tma(),
+            TAC_ADDR => self.mem.borrow().timer.get_tac(),
+            _ => self.mem.borrow().inner[addr as usize],
+        }
     }
 
     pub fn write(&self, addr: u16, val: u8) {
-        self.mem.borrow_mut()[addr as usize] = val;
-    }
-
-    pub fn inner(&self) -> std::cell::Ref<'_, [u8]> {
-        self.mem.borrow()
+        match addr {
+            DIV_ADDR => self.mem.borrow_mut().timer.reset_div(), // Writing to DIV resets it
+            TIMA_ADDR => self.mem.borrow_mut().timer.set_tima(val),
+            TMA_ADDR => self.mem.borrow_mut().timer.set_tma(val),
+            TAC_ADDR => self.mem.borrow_mut().timer.set_tac(val),
+            _ => self.mem.borrow_mut().inner[addr as usize] = val,
+        };
     }
 }

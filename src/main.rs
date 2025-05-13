@@ -5,6 +5,7 @@ use constants::{
 
 mod constants;
 mod mem;
+mod timer;
 
 #[derive(Debug, Default)]
 struct Reg16([u8; 2]);
@@ -1745,8 +1746,12 @@ impl std::fmt::Display for Op {
 }
 
 fn main() {
-    // Read Mem
-    let mem = mem::make_mem();
+    // Make timer
+    let timer = timer::make();
+
+    // Make memory
+    let memory = mem::make_mem(timer.clone());
+    timer.attach_mem(memory.clone());
 
     // Write ROM to mem
     let file_name = std::env::args().nth(1).expect("Missing ROM File");
@@ -1754,7 +1759,7 @@ fn main() {
         let f = std::io::BufReader::new(std::fs::File::open(file_name).unwrap());
         for (i, byte) in std::io::Read::bytes(f).enumerate() {
             let byte = byte.unwrap();
-            mem.write(i as u16, byte);
+            memory.write(i as u16, byte);
         }
     }
 
@@ -1762,9 +1767,14 @@ fn main() {
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
 
-    let mut cpu = Cpu::new(mem.clone());
+    // Make CPU
+    let mut cpu = Cpu::new(memory.clone());
+
+    // Step
     while !cpu.halted() {
+        // t_step += 1;
         cpu.step();
+        timer.step();
 
         // Check if SIGINT
         if rx.try_recv().is_ok() {
@@ -1773,13 +1783,18 @@ fn main() {
     }
 
     // // Print result
+    timer.print_timer();
     cpu.print_reg();
 
     // Dump Memory
-    std::fs::write(MEM_DUMP_FILE, &*mem.inner()).unwrap();
+    let mut dmem = [0; 0xFFFF + 1];
+    for i in 0..dmem.len() {
+        dmem[i] = memory.read(i as u16);
+    }
+    std::fs::write(MEM_DUMP_FILE, &dmem).unwrap();
 
     println!("VRAM ASCII:");
-    for chunk in mem.inner()[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
+    for chunk in dmem[RESULT_VRAM_START..RESULT_VRAM_END].chunks(16) {
         let s: String = chunk
             .iter()
             .map(|&b| if b >= 32 && b <= 126 { b as char } else { '.' })
