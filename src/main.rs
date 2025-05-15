@@ -5,6 +5,14 @@ mod cpu;
 mod mem;
 mod timer;
 
+fn read_rom(memory: &mem::MemoryHandle, file_name: &str) {
+    let f = std::io::BufReader::new(std::fs::File::open(file_name).unwrap());
+    for (i, byte) in std::io::Read::bytes(f).enumerate() {
+        let byte = byte.unwrap();
+        memory.write(i as u16, byte);
+    }
+}
+
 fn main() {
     // Make timer
     let timer = timer::make();
@@ -14,13 +22,9 @@ fn main() {
     timer.attach_mem(memory.clone());
 
     // Write ROM to mem
-    let file_name = std::env::args().nth(1).expect("Missing ROM File");
     {
-        let f = std::io::BufReader::new(std::fs::File::open(file_name).unwrap());
-        for (i, byte) in std::io::Read::bytes(f).enumerate() {
-            let byte = byte.unwrap();
-            memory.write(i as u16, byte);
-        }
+        let file_name = std::env::args().nth(1).expect("Missing ROM File");
+        read_rom(&memory, &file_name);
     }
 
     // Listen Event
