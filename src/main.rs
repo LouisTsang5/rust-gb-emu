@@ -10,7 +10,7 @@ fn main() {
     let timer = timer::make();
 
     // Make memory
-    let memory = mem::make_mem(timer.clone());
+    let memory = mem::make(timer.clone());
     timer.attach_mem(memory.clone());
 
     // Write ROM to mem

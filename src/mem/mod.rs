@@ -3,7 +3,7 @@ use crate::{
     timer::TimerHandle,
 };
 
-pub fn make_mem(timer: TimerHandle) -> MemoryHandle {
+pub fn make(timer: TimerHandle) -> MemoryHandle {
     let mem = std::rc::Rc::new(std::cell::RefCell::new(Memory {
         inner: [0; MEM_SIZE],
         timer,
