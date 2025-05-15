@@ -211,10 +211,6 @@ impl Cpu {
         get_cf => set_cf => 4, // Carry Flag 0b0001_0000
     }
 
-    fn halted(&self) -> bool {
-        self.halted
-    }
-
     fn reset(&mut self) {
         self.af.set(0x0108);
         self.bc.set(0x0013);
@@ -734,7 +730,6 @@ impl Cpu {
                 1
             }
             Op::Halt => {
-                // TODO: place holder
                 self.halted = true;
                 1
             }
@@ -1209,16 +1204,21 @@ impl Cpu {
         }
     }
 
-    fn handle_interupt(&mut self) -> u8 {
-        // Dont handle interrupt if IME is reset
-        if !self.ime {
-            return 0; // No cycle is passed
-        }
-
+    fn handle_interupt(&mut self) -> (u8, bool) {
         // Check if there is any interrupt need to be handled
         let b_ie = self.mem.read(IE_ADDR);
         let b_if = self.mem.read(IF_ADDR);
         let serviceable_interrupt = b_ie & b_if; // both the corresponding bit in the two bytes are set
+
+        // Define retval
+        let mut n_cycle = 0;
+        let should_exit_halt = serviceable_interrupt > 0; // Exit halt mode if there is any servicable interrupt
+
+        // Dont handle interrupt if IME is reset or no interrupt to be serviced
+        if !self.ime || serviceable_interrupt == 0 {
+            return (n_cycle, should_exit_halt);
+        }
+
         for bit_offset in 0..T_N_INTERRUPT {
             // no interrupt to handle
             if serviceable_interrupt & (1 << bit_offset) == 0 {
@@ -1239,34 +1239,41 @@ impl Cpu {
             let jp_addr = INTERRUPT_HANDLER_BASE_ADDR + (bit_offset * 8);
             self.pc.set(jp_addr);
 
-            // Return 5 cycles has passed
-            return 5;
+            // Set m-cycle
+            n_cycle = 5;
+            break;
         }
 
-        // No interrupt needs to be handled
-        return 0;
+        // Return
+        (n_cycle, should_exit_halt)
     }
 
     fn step(&mut self) -> u8 {
-        // Execute operation
-        let mut cycles_taken = self.execute_op();
+        let mut cycles_taken = 0;
 
-        // IME flag handling
-        match self.ime_pending {
-            ImePendingStatus::None => {}
-            ImePendingStatus::NextInstr => self.ime_pending = ImePendingStatus::ThisInstr,
-            ImePendingStatus::ThisInstr => {
-                self.ime = true;
-                self.ime_pending = ImePendingStatus::None;
-            }
+        // No opcode execution in halt mode
+        if !self.halted {
+            // Execute operation
+            cycles_taken += self.execute_op();
+
+            // IME flag handling
+            match self.ime_pending {
+                ImePendingStatus::None => {}
+                ImePendingStatus::NextInstr => self.ime_pending = ImePendingStatus::ThisInstr,
+                ImePendingStatus::ThisInstr => {
+                    self.ime = true;
+                    self.ime_pending = ImePendingStatus::None;
+                }
+            };
         };
 
         // Handle Interrupt
-        cycles_taken += self.handle_interupt();
+        let (ct, exit_halt) = self.handle_interupt();
+        cycles_taken += ct;
 
-        // Step timer for each cycle
-        for _ in 0..cycles_taken {
-            self.timer.step();
+        // Exit halt mode
+        if exit_halt {
+            self.halted = false;
         }
 
         // Return total number of cycles taken
@@ -1943,8 +1950,12 @@ fn main() {
     let mut cpu = Cpu::new(memory.clone(), timer.clone());
 
     // Step
-    while !cpu.halted() {
-        cpu.step();
+    loop {
+        let cycles_taken = cpu.step();
+        let cycles_taken = std::cmp::max(cycles_taken, 1); // Al least 1 cycle is taken (inc timer even in cpu halted mode)
+        for _ in 0..cycles_taken {
+            timer.step();
+        }
 
         // Check if SIGINT
         if rx.try_recv().is_ok() {
@@ -1952,7 +1963,7 @@ fn main() {
         }
     }
 
-    // // Print result
+    // Print result
     timer.print_timer();
     cpu.print_reg();
 
