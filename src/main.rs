@@ -697,11 +697,6 @@ impl Cpu {
                 // Update pc
                 let pc = self.pc.get() as i32 + rlt as i32;
                 self.pc.set(pc as u16);
-
-                if rlt == -2 {
-                    println!("Infinite Loop Encountered");
-                    self.halted = true;
-                }
                 3
             }
             Op::JrCcImm8(cond) => {
