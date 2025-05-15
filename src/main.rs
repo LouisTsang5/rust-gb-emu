@@ -546,7 +546,11 @@ impl Cpu {
                 self.set_zf(new_val == 0);
                 self.set_nf(false);
                 self.set_hf(hf_add(old_val, 1)); // 4th bit overflow
-                1
+
+                match param {
+                    ParamR8::ZHLZ => 3,
+                    _ => 1,
+                }
             }
             Op::DecR8(param) => {
                 // Read the byte
@@ -560,12 +564,19 @@ impl Cpu {
                 self.set_zf(new_val == 0);
                 self.set_nf(true);
                 self.set_hf(hf_sub(old_val, 1)); // 5th bit borrow
-                1
+
+                match param {
+                    ParamR8::ZHLZ => 3,
+                    _ => 1,
+                }
             }
             Op::LdR8Imm8(param) => {
                 let val = self.mem.read(self.pc.post_inc());
                 self.set_r8_val(param, val);
-                2
+                match param {
+                    ParamR8::ZHLZ => 3,
+                    _ => 2,
+                }
             }
             Op::Rlca => {
                 // Rotate A
@@ -727,7 +738,13 @@ impl Cpu {
             Op::LdR8R8(dest, src) => {
                 let val = self.get_r8_val(src);
                 self.set_r8_val(dest, val);
-                1
+                match dest {
+                    ParamR8::ZHLZ => 2,
+                    _ => match src {
+                        ParamR8::ZHLZ => 2,
+                        _ => 1,
+                    },
+                }
             }
             Op::Halt => {
                 self.halted = true;
