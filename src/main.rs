@@ -87,6 +87,9 @@ struct Cpu {
     // Interrupt Master Enable
     ime_pending: ImePendingStatus,
     ime: bool,
+
+    // Timer
+    timer: timer::TimerHandle,
 }
 
 // Generate flag functions
@@ -250,7 +253,7 @@ impl Cpu {
         );
     }
 
-    fn new(mem: mem::MemoryHandle) -> Self {
+    fn new(mem: mem::MemoryHandle, timer: timer::TimerHandle) -> Self {
         let mut cpu = Cpu {
             mem,
             af: Reg16::default(),
@@ -262,12 +265,13 @@ impl Cpu {
             halted: false,
             ime_pending: ImePendingStatus::default(),
             ime: false,
+            timer,
         };
         cpu.reset();
         cpu
     }
 
-    fn step_cb_op(&mut self, op: CbPrefixOp) {
+    fn step_cb_op(&mut self, op: CbPrefixOp) -> u8 {
         match op {
             CbPrefixOp::RlcR8(param) => {
                 let val = self.get_r8_val(param);
@@ -279,6 +283,11 @@ impl Cpu {
                 self.set_zf(val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::RrcR8(param) => {
                 let val = self.get_r8_val(param);
@@ -290,6 +299,11 @@ impl Cpu {
                 self.set_zf(val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::RlR8(param) => {
                 let o_cf = self.get_cf();
@@ -309,6 +323,11 @@ impl Cpu {
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::RrR8(param) => {
                 let o_cf = self.get_cf();
@@ -328,6 +347,11 @@ impl Cpu {
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::SlaR8(param) => {
                 let o_val = self.get_r8_val(param);
@@ -337,6 +361,11 @@ impl Cpu {
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::SraR8(param) => {
                 let o_val = self.get_r8_val(param);
@@ -346,6 +375,11 @@ impl Cpu {
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::SwapR8(param) => {
                 let o_val = self.get_r8_val(param);
@@ -355,6 +389,11 @@ impl Cpu {
                 self.set_cf(false);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::SrlR8(param) => {
                 let o_val = self.get_r8_val(param);
@@ -364,27 +403,47 @@ impl Cpu {
                 self.set_zf(n_val == 0);
                 self.set_hf(false);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::BitB3R8(bit, param) => {
                 let val = self.get_r8_val(param);
                 self.set_zf(((val >> bit.val()) & 0x01) == 0);
                 self.set_hf(true);
                 self.set_nf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 3,
+                    _ => 2,
+                }
             }
             CbPrefixOp::ResB3R8(bit, param) => {
                 let val = self.get_r8_val(param);
                 let mask = !(0x01u8 << bit.val());
                 self.set_r8_val(param, val & mask);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
             CbPrefixOp::SetB3R8(bit, param) => {
                 let val = self.get_r8_val(param);
                 let mask = 0x01u8 << bit.val();
                 self.set_r8_val(param, val | mask);
+
+                match param {
+                    ParamR8::ZHLZ => 4,
+                    _ => 2,
+                }
             }
-        };
+        }
     }
 
-    fn execute_op(&mut self) {
+    fn execute_op(&mut self) -> u8 {
         // Fetch
         let byte = self.mem.read(self.pc.post_inc());
 
@@ -404,7 +463,7 @@ impl Cpu {
 
         // Execute
         match op {
-            Op::Nop => {}
+            Op::Nop => 1,
             Op::LdR16Imm16(param) => {
                 // Read 2 bytes
                 let first = self.mem.read(self.pc.post_inc());
@@ -412,6 +471,7 @@ impl Cpu {
 
                 // Write to register
                 self.set_r16_val(param, u16::from_le_bytes([first, second]));
+                3
             }
             Op::LdZR16MemZA(param) => {
                 // Load index
@@ -426,6 +486,7 @@ impl Cpu {
                     ParamR16Mem::HLD => self.hl.set(self.hl.get().wrapping_sub(1)),
                     _ => {}
                 };
+                2
             }
             Op::LdAZR16MemZ(param) => {
                 // Load index
@@ -440,6 +501,7 @@ impl Cpu {
                     ParamR16Mem::HLD => self.hl.set(self.hl.get().wrapping_sub(1)),
                     _ => {}
                 };
+                2
             }
             Op::LdZImm16ZSp => {
                 // Read next 2 bytes
@@ -450,14 +512,17 @@ impl Cpu {
                 // Use it as index to write val of sp
                 self.mem.write(idx, self.sp.get_lo());
                 self.mem.write(idx + 1, self.sp.get_hi());
+                5
             }
             Op::IncR16(param) => {
                 let val = self.get_r16_val(param);
                 self.set_r16_val(param, val.wrapping_add(1));
+                2
             }
             Op::DecR16(param) => {
                 let val = self.get_r16_val(param);
                 self.set_r16_val(param, val.wrapping_sub(1));
+                2
             }
             Op::AddHlR16(param) => {
                 let hl_val = self.hl.get();
@@ -471,6 +536,7 @@ impl Cpu {
                 self.set_nf(false); // sub flag
                 self.set_hf(((hl_val & 0x0FFF) + (add_num & 0x0FFF)) > 0x0FFF); // 12th bit overflow
                 self.set_cf(cf); // 16th bit overflow
+                2
             }
             Op::IncR8(param) => {
                 // Read the byte
@@ -484,6 +550,7 @@ impl Cpu {
                 self.set_zf(new_val == 0);
                 self.set_nf(false);
                 self.set_hf(hf_add(old_val, 1)); // 4th bit overflow
+                1
             }
             Op::DecR8(param) => {
                 // Read the byte
@@ -497,10 +564,12 @@ impl Cpu {
                 self.set_zf(new_val == 0);
                 self.set_nf(true);
                 self.set_hf(hf_sub(old_val, 1)); // 5th bit borrow
+                1
             }
             Op::LdR8Imm8(param) => {
                 let val = self.mem.read(self.pc.post_inc());
                 self.set_r8_val(param, val);
+                2
             }
             Op::Rlca => {
                 // Rotate A
@@ -519,6 +588,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(top_bit);
+                1
             }
             Op::Rrca => {
                 // Rotate A
@@ -537,6 +607,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(bottom_bit);
+                1
             }
             Op::Rla => {
                 // Rotate A
@@ -552,6 +623,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf((a_val & 0b1000_0000) != 0);
+                1
             }
             Op::Rra => {
                 // Rotate A
@@ -567,6 +639,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf((a_val & 0b0000_0001) != 0);
+                1
             }
             Op::Daa => {
                 let nf = self.get_nf();
@@ -596,21 +669,25 @@ impl Cpu {
                 if !nf && adjust >= 0x60 {
                     self.set_cf(true);
                 }
+                1
             }
             Op::Cpl => {
                 self.af.set_hi(!self.af.get_hi());
                 self.set_nf(true);
                 self.set_hf(true);
+                1
             }
             Op::Scf => {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(true);
+                1
             }
             Op::Ccf => {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(!self.get_cf());
+                1
             }
             Op::JrImm8 => {
                 // Read next byte as 2's complement relative position
@@ -620,6 +697,12 @@ impl Cpu {
                 // Update pc
                 let pc = self.pc.get() as i32 + rlt as i32;
                 self.pc.set(pc as u16);
+
+                if rlt == -2 {
+                    println!("Infinite Loop Encountered");
+                    self.halted = true;
+                }
+                3
             }
             Op::JrCcImm8(cond) => {
                 // Read next byte
@@ -641,19 +724,24 @@ impl Cpu {
                     // Update pc
                     let pc = self.pc.get() as i32 + rlt as i32;
                     self.pc.set(pc as u16);
+                    3
+                } else {
+                    2
                 }
             }
             Op::Stop => {
                 // TODO: place holder
-                self.halted = true;
+                1
             }
             Op::LdR8R8(dest, src) => {
                 let val = self.get_r8_val(src);
                 self.set_r8_val(dest, val);
+                1
             }
             Op::Halt => {
                 // TODO: place holder
                 self.halted = true;
+                1
             }
             Op::AddAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -665,6 +753,11 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(hf_add(lhs, rhs));
                 self.set_cf(cf);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::AdcAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -681,6 +774,11 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_cf(c1 || c2);
                 self.set_hf(hf_add(lhs, rhs) || hf_add(a1, carry));
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::SubAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -692,6 +790,11 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::SbcAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -708,6 +811,11 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs) || hf_sub(a1, carry));
                 self.set_cf(c1 || c2);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::AndAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -718,6 +826,11 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(true);
                 self.set_cf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::XorAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -728,6 +841,11 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::OrAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -738,6 +856,11 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(false);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::CpAR8(param) => {
                 let lhs = self.af.get_hi();
@@ -747,6 +870,11 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
+
+                match param {
+                    ParamR8::ZHLZ => 2,
+                    _ => 1,
+                }
             }
             Op::AddAImm8 => {
                 let lhs = self.af.get_hi();
@@ -758,6 +886,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(hf_add(lhs, rhs));
                 self.set_cf(cf);
+                2
             }
             Op::AdcAImm8 => {
                 let lhs = self.af.get_hi();
@@ -774,6 +903,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(hf_add(lhs, rhs) || hf_add(a1, carry));
                 self.set_cf(c1 || c2);
+                2
             }
             Op::SubAImm8 => {
                 let lhs = self.af.get_hi();
@@ -785,6 +915,7 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
+                2
             }
             Op::SbcAImm8 => {
                 let lhs = self.af.get_hi();
@@ -801,6 +932,7 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs) || hf_sub(a1, carry));
                 self.set_cf(c1 || c2);
+                2
             }
             Op::AndAImm8 => {
                 let lhs = self.af.get_hi();
@@ -811,6 +943,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(true);
                 self.set_cf(false);
+                2
             }
             Op::XorAImm8 => {
                 let lhs = self.af.get_hi();
@@ -821,6 +954,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(false);
+                2
             }
             Op::OrAImm8 => {
                 let lhs = self.af.get_hi();
@@ -831,6 +965,7 @@ impl Cpu {
                 self.set_nf(false);
                 self.set_hf(false);
                 self.set_cf(false);
+                2
             }
             Op::CpAImm8 => {
                 let lhs = self.af.get_hi();
@@ -840,22 +975,28 @@ impl Cpu {
                 self.set_nf(true);
                 self.set_hf(hf_sub(lhs, rhs));
                 self.set_cf(cf);
+                2
             }
             Op::RetCond(cond) => {
                 let is_jp = self.check_cond(cond);
                 if is_jp {
                     self.pc.set_lo(self.mem.read(self.sp.post_inc()));
                     self.pc.set_hi(self.mem.read(self.sp.post_inc()));
+                    5
+                } else {
+                    2
                 }
             }
             Op::Ret => {
                 self.pc.set_lo(self.mem.read(self.sp.post_inc()));
                 self.pc.set_hi(self.mem.read(self.sp.post_inc()));
+                4
             }
             Op::Reti => {
                 self.ime_pending = ImePendingStatus::ThisInstr;
                 self.pc.set_lo(self.mem.read(self.sp.post_inc()));
                 self.pc.set_hi(self.mem.read(self.sp.post_inc()));
+                4
             }
             Op::JpCondImm16(cond) => {
                 let is_jp = self.check_cond(cond);
@@ -867,6 +1008,9 @@ impl Cpu {
 
                 if is_jp {
                     self.pc.set(jp_addr);
+                    4
+                } else {
+                    3
                 }
             }
             Op::JpImm16 => {
@@ -875,9 +1019,11 @@ impl Cpu {
                     self.mem.read(self.pc.post_inc()),
                 ]);
                 self.pc.set(jp_addr);
+                4
             }
             Op::JpHl => {
                 self.pc.set(self.hl.get());
+                1
             }
             Op::CallCondImm16(cond) => {
                 let is_jp = self.check_cond(cond);
@@ -896,6 +1042,9 @@ impl Cpu {
 
                     // Update PC
                     self.pc.set(jp_addr);
+                    6
+                } else {
+                    3
                 }
             }
             Op::CallImm16 => {
@@ -912,6 +1061,7 @@ impl Cpu {
 
                 // Update PC
                 self.pc.set(jp_addr);
+                6
             }
             Op::Rst(addr) => {
                 // Push the current PC to stack
@@ -921,6 +1071,7 @@ impl Cpu {
 
                 // Update PC
                 self.pc.set(addr.addr());
+                4
             }
             Op::Pop(param) => {
                 let lo = match param {
@@ -930,11 +1081,13 @@ impl Cpu {
                 let hi = self.mem.read(self.sp.post_inc());
                 let val = u16::from_le_bytes([lo, hi]);
                 self.set_r16_stk_val(param, val);
+                3
             }
             Op::Push(param) => {
                 let val = self.get_r16_stk_val(param).to_le_bytes();
                 self.mem.write(self.sp.pre_dec(), val[1]);
                 self.mem.write(self.sp.pre_dec(), val[0]);
+                4
             }
             Op::Prefix => {
                 let b = self.mem.read(self.pc.post_inc());
@@ -946,15 +1099,17 @@ impl Cpu {
                     op,
                     u8::from(op),
                 );
-                self.step_cb_op(op);
+                self.step_cb_op(op)
             }
             Op::LdhZCZA => {
                 let addr = 0xFF00 + self.bc.get_lo() as u16;
                 self.mem.write(addr, self.af.get_hi());
+                2
             }
             Op::LdhZImm8ZA => {
                 let addr = 0xFF00 + self.mem.read(self.pc.post_inc()) as u16;
                 self.mem.write(addr, self.af.get_hi());
+                3
             }
             Op::LdZImm16ZA => {
                 let addr = u16::from_le_bytes([
@@ -962,14 +1117,17 @@ impl Cpu {
                     self.mem.read(self.pc.post_inc()),
                 ]);
                 self.mem.write(addr, self.af.get_hi());
+                4
             }
             Op::LdhAZCZ => {
                 let addr = 0xFF00 + self.bc.get_lo() as u16;
                 self.af.set_hi(self.mem.read(addr));
+                2
             }
             Op::LdhAZImm8Z => {
                 let addr = 0xFF00 + self.mem.read(self.pc.post_inc()) as u16;
                 self.af.set_hi(self.mem.read(addr));
+                3
             }
             Op::LdAZImm16Z => {
                 let addr = u16::from_le_bytes([
@@ -977,6 +1135,7 @@ impl Cpu {
                     self.mem.read(self.pc.post_inc()),
                 ]);
                 self.af.set_hi(self.mem.read(addr));
+                4
             }
             Op::AddSpImm8 => {
                 let imm8 = self.mem.read(self.pc.post_inc());
@@ -1007,6 +1166,7 @@ impl Cpu {
                 self.set_hf(hf);
                 self.set_zf(false);
                 self.set_nf(false);
+                4
             }
             Op::LdHlSpXImm8 => {
                 let imm8 = self.mem.read(self.pc.post_inc());
@@ -1037,23 +1197,27 @@ impl Cpu {
                 self.set_hf(hf);
                 self.set_zf(false);
                 self.set_nf(false);
+                3
             }
             Op::LdSpHl => {
                 self.sp.set(self.hl.get());
+                2
             }
             Op::Di => {
                 self.ime = false;
+                1
             }
             Op::Ei => {
                 self.ime_pending = ImePendingStatus::NextInstr;
+                1
             }
-        };
+        }
     }
 
-    fn handle_interupt(&mut self) {
+    fn handle_interupt(&mut self) -> u8 {
         // Dont handle interrupt if IME is reset
         if !self.ime {
-            return;
+            return 0; // No cycle is passed
         }
 
         // Check if there is any interrupt need to be handled
@@ -1079,13 +1243,18 @@ impl Cpu {
             // Jump to handler
             let jp_addr = INTERRUPT_HANDLER_BASE_ADDR + (bit_offset * 8);
             self.pc.set(jp_addr);
-            return;
+
+            // Return 5 cycles has passed
+            return 5;
         }
+
+        // No interrupt needs to be handled
+        return 0;
     }
 
-    fn step(&mut self) {
+    fn step(&mut self) -> u8 {
         // Execute operation
-        self.execute_op();
+        let mut cycles_taken = self.execute_op();
 
         // IME flag handling
         match self.ime_pending {
@@ -1098,7 +1267,15 @@ impl Cpu {
         };
 
         // Handle Interrupt
-        self.handle_interupt();
+        cycles_taken += self.handle_interupt();
+
+        // Step timer for each cycle
+        for _ in 0..cycles_taken {
+            self.timer.step();
+        }
+
+        // Return total number of cycles taken
+        cycles_taken
     }
 }
 
@@ -1768,13 +1945,11 @@ fn main() {
     ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
 
     // Make CPU
-    let mut cpu = Cpu::new(memory.clone());
+    let mut cpu = Cpu::new(memory.clone(), timer.clone());
 
     // Step
     while !cpu.halted() {
-        // t_step += 1;
         cpu.step();
-        timer.step();
 
         // Check if SIGINT
         if rx.try_recv().is_ok() {
