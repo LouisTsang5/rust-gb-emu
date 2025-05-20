@@ -1,10 +1,15 @@
+use std::{
+    cell::{Ref, RefCell},
+    rc::Rc,
+};
+
 use crate::{
     constants::{DIV_ADDR, MEM_SIZE, TAC_ADDR, TIMA_ADDR, TMA_ADDR},
     timer::TimerHandle,
 };
 
 pub fn make(timer: TimerHandle) -> MemoryHandle {
-    let mem = std::rc::Rc::new(std::cell::RefCell::new(Memory {
+    let mem = Rc::new(RefCell::new(Memory {
         inner: [0; MEM_SIZE],
         timer,
     }));
@@ -19,7 +24,7 @@ pub struct Memory {
 
 #[derive(Debug, Clone)]
 pub struct MemoryHandle {
-    mem: std::rc::Rc<std::cell::RefCell<Memory>>,
+    mem: Rc<RefCell<Memory>>,
 }
 
 impl MemoryHandle {
