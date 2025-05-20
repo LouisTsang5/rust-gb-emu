@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    constants::{DIV_ADDR, MEM_SIZE, TAC_ADDR, TIMA_ADDR, TMA_ADDR},
+    constants::{DIV_ADDR, MEM_SIZE, TAC_ADDR, TIMA_ADDR, TMA_ADDR, VRAM_SIZE, VRAM_START_ADDR},
     timer::TimerHandle,
 };
 
@@ -46,5 +46,11 @@ impl MemoryHandle {
             TAC_ADDR => self.mem.borrow_mut().timer.set_tac(val),
             _ => self.mem.borrow_mut().inner[addr as usize] = val,
         };
+    }
+
+    pub fn vram(&self) -> Ref<[u8]> {
+        Ref::map(self.mem.borrow(), |m| {
+            &m.inner[VRAM_START_ADDR as usize..(VRAM_START_ADDR + VRAM_SIZE) as usize]
+        })
     }
 }
