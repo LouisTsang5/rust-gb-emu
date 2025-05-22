@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::{
     constants::{
-        PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, TILES_ARR_START_ADDR,
-        TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH,
+        PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR,
+        TILES_ARR_START_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH,
     },
     mem::MemoryHandle,
 };
@@ -27,9 +27,18 @@ impl Ppu {
         const ARR_END: usize = (TILE_MAP_START_ADDR - TILES_ARR_START_ADDR) as usize;
         let tiles_arr = &vram[0..ARR_END];
         let tiles_map = &vram[ARR_END..vram.len()];
+
+        // Calculate x & y offset
+        let scroll_x = self.memory.read(SCX_ADDR);
+        let scroll_y = self.memory.read(SCY_ADDR);
+
         // For each pixel
-        for y in 0..SCREEN_PIXEL_HEIGHT {
-            for x in 0..SCREEN_PIXEL_WIDTH {
+        for screen_y in 0..SCREEN_PIXEL_HEIGHT {
+            for screen_x in 0..SCREEN_PIXEL_WIDTH {
+                // Calculate x & y with SCX & SCY offset
+                let x = (screen_x + scroll_x as usize) % 256;
+                let y = (screen_y + scroll_y as usize) % 256;
+
                 // Calculate tile index
                 let tile_map_x = x / TILE_WIDTH as usize;
                 let tile_map_y = y / TILE_WIDTH as usize;
@@ -50,8 +59,8 @@ impl Ppu {
                 let palette_idx = ((((b_hi >> rs) & 0x1) << 1) | ((b_lo >> rs) & 0x1)) as usize;
 
                 // Set the framebuf
-                let framebuf_idx = x + y * SCREEN_PIXEL_WIDTH;
-                self.framebuf[framebuf_idx] = PALETTE_RGB[palette_idx];
+                let framebuf_idx = screen_x + screen_y * SCREEN_PIXEL_WIDTH;
+                self.framebuf[framebuf_idx] = rgb_to_u32(&PALETTE_RGB[palette_idx]);
             }
         }
 

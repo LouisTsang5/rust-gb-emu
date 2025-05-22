@@ -30,6 +30,8 @@ pub const OBP_ADDRS: [u16; 2] = [BGP_ADDR + 1, BGP_ADDR + 2];
 pub const SCREEN_PIXEL_WIDTH: usize = 160;
 pub const SCREEN_PIXEL_HEIGHT: usize = 144;
 pub const PALETTE_RGB: [[u8; 3]; 4] = [[0xFF; 3], [0xC0; 3], [0x60; 3], [0; 3]];
+pub const SCY_ADDR: u16 = 0xFF42;
+pub const SCX_ADDR: u16 = 0xFF43;
 
 // For Tests
 pub const RESULT_VRAM_START: usize = 0x9800;
