@@ -2,10 +2,10 @@ use minifb::Window;
 
 use crate::{
     constants::{
-        LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_WIN_ENABLE_MASK,
-        LCDC_WIN_MAP_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
-        SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR,
-        WX_ADDR, WX_OFFSET, WY_ADDR,
+        LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
+        LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
+        SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
+        TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -72,9 +72,8 @@ fn get_palette(
 }
 
 impl Ppu {
-    fn render_screen(&mut self) {
+    fn render_screen(&mut self, lcdc: u8) {
         // LCDC flags
-        let lcdc = self.memory.read(LCDC_ADDR);
         let win_enable = (lcdc & LCDC_WIN_ENABLE_MASK) > 0;
         let bg_win_addr_mode = (lcdc & LCDC_BG_WIN_ADDR_MODE_MASK) > 0;
 
@@ -106,16 +105,19 @@ impl Ppu {
                 );
 
                 // Get palette for Window
-                let win_palette = get_palette(
-                    tiles_arr,
-                    win_map,
-                    (screen_x + WX_OFFSET).wrapping_sub(win_x) % BG_WIDTH,
-                    screen_y.wrapping_sub(win_y) % BG_WIDTH,
-                    bg_win_addr_mode,
-                );
+                let win_palette = match win_enable {
+                    false => 0,
+                    true => get_palette(
+                        tiles_arr,
+                        win_map,
+                        (screen_x + WX_OFFSET).wrapping_sub(win_x) % BG_WIDTH,
+                        screen_y.wrapping_sub(win_y) % BG_WIDTH,
+                        bg_win_addr_mode,
+                    ),
+                };
 
                 // Check priority
-                let palette_idx = match win_enable && win_palette > 0 {
+                let palette_idx = match win_palette > 0 {
                     true => win_palette,
                     false => bg_palette,
                 } as usize;
@@ -134,8 +136,18 @@ impl Ppu {
     }
 
     pub fn render(&mut self) {
+        // Make screen white
+        for b in self.framebuf.iter_mut() {
+            *b = 0x00FFFFFF;
+        }
+
+        // Get lcdc
+        let lcdc = self.memory.read(LCDC_ADDR);
+
         // Render screen
-        self.render_screen();
+        if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
+            self.render_screen(lcdc);
+        }
 
         // Update window
         self.window
