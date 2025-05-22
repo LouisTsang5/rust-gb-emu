@@ -1,6 +1,7 @@
 use constants::{
-    MEM_DUMP_FILE, RESULT_VRAM_END, RESULT_VRAM_START, TILES_ARR_START_ADDR, TILE_MAP_START_ADDR,
-    TILE_SIZE, VRAM_SIZE, VRAM_START_ADDR,
+    MEM_DUMP_FILE, RESULT_VRAM_END, RESULT_VRAM_START, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH,
+    SCX_ADDR, SCY_ADDR, TILES_ARR_START_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
+    VRAM_SIZE, VRAM_START_ADDR,
 };
 
 mod constants;
@@ -8,6 +9,7 @@ mod cpu;
 mod mem;
 mod ppu;
 mod timer;
+mod util;
 
 fn read_rom(memory: &mem::MemoryHandle, file_name: &str) {
     let f = std::io::BufReader::new(std::fs::File::open(file_name).unwrap());
@@ -19,8 +21,8 @@ fn read_rom(memory: &mem::MemoryHandle, file_name: &str) {
 
 fn make_test_vram(memory: &mem::MemoryHandle) {
     const TILE: [u8; TILE_SIZE as usize] = [
-        0xAA, 0xAA, 0x55, 0x55, 0xAA, 0xAA, 0x55, 0x55, 0xAA, 0xAA, 0x55, 0x55, 0xAA, 0xAA, 0x55,
-        0x55,
+        0x3C, 0x7E, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x7E, 0x5E, 0x7E, 0x0A, 0x7C, 0x56, 0x38,
+        0x7C,
     ];
     const TILE_ID: u8 = 1;
 
@@ -32,9 +34,23 @@ fn make_test_vram(memory: &mem::MemoryHandle) {
         );
     }
 
-    // Point to TILE_ID for all tile map elements
-    for i in TILE_MAP_START_ADDR..VRAM_START_ADDR + VRAM_SIZE {
+    const TILE_MAP_MID_ADDR: u16 = (TILE_MAP_WIDTH * TILE_MAP_WIDTH) as u16 + TILE_MAP_START_ADDR;
+    const TILE_MAP_END_ADDR: u16 = VRAM_START_ADDR + VRAM_SIZE;
+
+    // Set BG
+    for i in TILE_MAP_START_ADDR..TILE_MAP_MID_ADDR {
         memory.write(i, TILE_ID);
+    }
+
+    // Set Window
+    for i in TILE_MAP_MID_ADDR..TILE_MAP_END_ADDR {
+        let base = i - TILE_MAP_MID_ADDR;
+        let x = base % TILE_MAP_WIDTH as u16;
+        let y = base / TILE_MAP_WIDTH as u16;
+
+        if x < 2 && y < 2 {
+            memory.write(i, TILE_ID);
+        }
     }
 }
 
@@ -53,30 +69,43 @@ fn main() {
         make_test_vram(&memory);
     }
 
-    // Listen Event
-    let (tx, rx) = std::sync::mpsc::channel();
-    ctrlc::set_handler(move || tx.send(()).expect("Channel Failed")).unwrap();
-
     // Make CPU
     let mut cpu = cpu::make(memory.clone());
 
     // Make PPU
-    let mut ppu = ppu::make(memory.clone());
+    let mut window = minifb::Window::new(
+        "GB EMU",
+        SCREEN_PIXEL_WIDTH,
+        SCREEN_PIXEL_HEIGHT,
+        minifb::WindowOptions {
+            resize: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    window.set_target_fps(30);
+    let mut ppu = ppu::make(memory.clone(), window);
 
     // Step
+    let mut x_offset = 0;
     loop {
         // TODO: TEMP RENDER LOGIC
-        ppu.render();
-        break;
+        time!(ppu.render());
+        memory.write(SCX_ADDR, x_offset);
+        memory.write(SCY_ADDR, x_offset);
+        x_offset = x_offset.wrapping_add(1);
+        std::thread::sleep(std::time::Duration::from_millis(300));
 
-        let cycles_taken = cpu.step();
-        let cycles_taken = std::cmp::max(cycles_taken, 1); // Al least 1 cycle is taken (inc timer even in cpu halted mode)
-        for _ in 0..cycles_taken {
-            timer.step();
-        }
+        // break;
+
+        // let cycles_taken = cpu.step();
+        // let cycles_taken = std::cmp::max(cycles_taken, 1); // Al least 1 cycle is taken (inc timer even in cpu halted mode)
+        // for _ in 0..cycles_taken {
+        //     timer.step();
+        // }
 
         // Check if SIGINT
-        if rx.try_recv().is_ok() {
+        if !ppu.is_window_open() {
             break;
         }
     }
