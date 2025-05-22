@@ -5,6 +5,7 @@ use crate::{
         LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_WIN_ENABLE_MASK,
         LCDC_WIN_MAP_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
         SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR,
+        WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -36,15 +37,10 @@ pub struct Ppu {
 fn get_palette(
     tiles_arr: &[u8],
     tiles_map: &[u8],
-    screen_x: usize,
-    screen_y: usize,
-    scroll_x: u8,
-    scroll_y: u8,
+    x: usize, // The x coordinate of the full 256 x 256 BG / WIN picture
+    y: usize, // The y coordinate of the full 256 x 256 BG / WIN picture
     unsigned_addr_mod: bool,
 ) -> u8 {
-    let x = (screen_x + scroll_x as usize) % 256;
-    let y = (screen_y + scroll_y as usize) % 256;
-
     // Calculate tile index
     let tile_map_x = x / TILE_WIDTH as usize;
     let tile_map_y = y / TILE_WIDTH as usize;
@@ -76,11 +72,17 @@ fn get_palette(
 }
 
 impl Ppu {
-    fn render_screen(&mut self, scroll_x: u8, scroll_y: u8) {
+    fn render_screen(&mut self) {
         // LCDC flags
         let lcdc = self.memory.read(LCDC_ADDR);
         let win_enable = (lcdc & LCDC_WIN_ENABLE_MASK) > 0;
         let bg_win_addr_mode = (lcdc & LCDC_BG_WIN_ADDR_MODE_MASK) > 0;
+
+        // BG & Window offsets
+        let scroll_x = self.memory.read(SCX_ADDR) as usize;
+        let scroll_y = self.memory.read(SCY_ADDR) as usize;
+        let win_x = self.memory.read(WX_ADDR) as usize;
+        let win_y = self.memory.read(WY_ADDR) as usize;
 
         // Tiles & Maps
         let vram = self.memory.vram();
@@ -91,25 +93,24 @@ impl Ppu {
         let win_map = get_map(&vram, (lcdc & LCDC_WIN_MAP_MASK) / LCDC_WIN_MAP_MASK);
 
         // For each pixel
+        const BG_WIDTH: usize = TILE_WIDTH as usize * TILE_MAP_WIDTH;
         for screen_y in 0..SCREEN_PIXEL_HEIGHT {
             for screen_x in 0..SCREEN_PIXEL_WIDTH {
-                // Get palette for BG & Window
+                // Get palette for BG
                 let bg_palette = get_palette(
                     tiles_arr,
                     bg_map,
-                    screen_x,
-                    screen_y,
-                    scroll_x,
-                    scroll_y,
+                    (screen_x + scroll_x) % BG_WIDTH,
+                    (screen_y + scroll_y) % BG_WIDTH,
                     bg_win_addr_mode,
                 );
+
+                // Get palette for Window
                 let win_palette = get_palette(
                     tiles_arr,
                     win_map,
-                    screen_x,
-                    screen_y,
-                    0,
-                    0,
+                    (screen_x + WX_OFFSET).wrapping_sub(win_x) % BG_WIDTH,
+                    screen_y.wrapping_sub(win_y) % BG_WIDTH,
                     bg_win_addr_mode,
                 );
 
@@ -117,11 +118,11 @@ impl Ppu {
                 let palette_idx = match win_enable && win_palette > 0 {
                     true => win_palette,
                     false => bg_palette,
-                };
+                } as usize;
 
                 // Set the framebuf
                 let framebuf_idx = screen_x + screen_y * SCREEN_PIXEL_WIDTH;
-                let rgb = &PALETTE_RGB[palette_idx as usize];
+                let rgb = &PALETTE_RGB[palette_idx];
                 self.framebuf[framebuf_idx] =
                     (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32;
             }
@@ -134,9 +135,7 @@ impl Ppu {
 
     pub fn render(&mut self) {
         // Render screen
-        let scroll_x = self.memory.read(SCX_ADDR);
-        let scroll_y = self.memory.read(SCY_ADDR);
-        self.render_screen(scroll_x, scroll_y);
+        self.render_screen();
 
         // Update window
         self.window
