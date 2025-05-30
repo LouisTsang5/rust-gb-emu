@@ -141,9 +141,7 @@ impl Ppu {
 
                 // Set the framebuf
                 let framebuf_idx = screen_x + screen_y * SCREEN_PIXEL_WIDTH;
-                let rgb = &PALETTE_RGB[palette_idx];
-                self.framebuf[framebuf_idx] =
-                    (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32;
+                self.framebuf[framebuf_idx] = PALETTE_RGB[palette_idx];
             }
         }
     }
