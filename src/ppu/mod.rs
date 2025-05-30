@@ -3,7 +3,8 @@ use minifb::Window;
 use crate::{
     constants::{
         LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
-        LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
+        LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK,
+        OAM_END_ADDR, OAM_ENTRY_SIZE, OAM_START_ADDR, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
         SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
         TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
     },
@@ -29,6 +30,29 @@ impl Tile<'_> {
 
         // Find the palette to use
         (((b_hi >> rs) & 0x1) << 1) | ((b_lo >> rs) & 0x1)
+    }
+}
+
+struct ObjectAttribute<'a>(&'a [u8]);
+
+impl<'a> From<&'a [u8]> for ObjectAttribute<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        assert!(value.len() == OAM_ENTRY_SIZE as usize);
+        ObjectAttribute(value)
+    }
+}
+
+impl ObjectAttribute<'_> {
+    fn y(&self) -> u8 {
+        self.0[0]
+    }
+
+    fn x(&self) -> u8 {
+        self.0[1]
+    }
+
+    fn tile_idx(&self) -> usize {
+        self.0[2] as usize
     }
 }
 
@@ -146,6 +170,87 @@ impl Ppu {
         }
     }
 
+    fn render_object(&mut self, lcdc: u8) {
+        let oam = self.memory.oam();
+        let vram = self.memory.vram();
+        let obj_double_size = lcdc & LCDC_OBJ_SIZE_MASK > 0;
+
+        const N_OBJECTS: usize = ((OAM_END_ADDR - OAM_START_ADDR) / OAM_ENTRY_SIZE as u16) as usize;
+        for obj in oam
+            .chunks(OAM_ENTRY_SIZE as usize)
+            .take(N_OBJECTS)
+            .map(|o| ObjectAttribute::from(o))
+        {
+            let x = obj.x();
+            let y = obj.y();
+            let obj_size = match obj_double_size {
+                true => 2,
+                false => 1,
+            };
+
+            // // Skip this obj if it cannot be viewed
+            // if x == 0
+            //     || x >= SCREEN_PIXEL_WIDTH as u8 + TILE_WIDTH
+            //     || y <= (TILE_WIDTH * 2 - obj_size * TILE_WIDTH)
+            //     || y >= SCREEN_PIXEL_HEIGHT as u8 + TILE_WIDTH * 2
+            // {
+            //     continue;
+            // }
+
+            let tile_idx = match obj_double_size {
+                false => obj.tile_idx(),
+                true => obj.tile_idx() & 0xFE,
+            } as usize;
+
+            let tiles = vram
+                .chunks(TILE_SIZE as usize)
+                .skip(tile_idx)
+                .take(obj_size as usize)
+                .map(|t| Tile::from(t));
+
+            // Tile iteration
+            for (i, tile) in tiles.enumerate() {
+                // Prevent iteration of off-screen pixels
+                let tile_offset_y =
+                    TILE_WIDTH * 2 - std::cmp::min(TILE_WIDTH * 2, y + i as u8 * TILE_WIDTH);
+                let tile_limit_y = std::cmp::min(
+                    TILE_WIDTH,
+                    SCREEN_PIXEL_HEIGHT as u8 + TILE_WIDTH * 2
+                        - std::cmp::min(
+                            SCREEN_PIXEL_HEIGHT as u8 + TILE_WIDTH * 2,
+                            y + i as u8 * TILE_WIDTH,
+                        ),
+                );
+                for tile_y in tile_offset_y..tile_limit_y {
+                    // Calculate screen y position
+                    let screen_y = obj
+                        .y()
+                        .wrapping_add(tile_y)
+                        .wrapping_add(i as u8 * TILE_WIDTH)
+                        .wrapping_sub(TILE_WIDTH * 2);
+
+                    // Prevent iteration of off-screen pixels
+                    let tile_offset_x = TILE_WIDTH - std::cmp::min(TILE_WIDTH, x);
+                    let tile_limit_x = std::cmp::min(
+                        TILE_WIDTH,
+                        SCREEN_PIXEL_WIDTH as u8 + TILE_WIDTH
+                            - std::cmp::min(SCREEN_PIXEL_WIDTH as u8 + TILE_WIDTH, x),
+                    );
+                    for tile_x in tile_offset_x..tile_limit_x {
+                        // Calculate screen x position
+                        let screen_x = obj.x().wrapping_add(tile_x).wrapping_sub(TILE_WIDTH);
+
+                        // Update frame buffer
+                        let framebuf_idx =
+                            screen_x as usize + screen_y as usize * SCREEN_PIXEL_WIDTH;
+                        self.framebuf[framebuf_idx] =
+                            PALETTE_RGB[tile.palette(tile_x, tile_y) as usize];
+                    }
+                }
+            }
+        }
+    }
+
     pub fn is_window_open(&self) -> bool {
         self.window.is_open()
     }
@@ -162,6 +267,11 @@ impl Ppu {
         // Render screen
         if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
             self.render_screen(lcdc);
+        }
+
+        // Render objects
+        if (lcdc & LCDC_OBJ_ENABLE_MASK) > 0 {
+            self.render_object(lcdc);
         }
 
         // Update window

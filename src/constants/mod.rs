@@ -40,7 +40,12 @@ pub const LCDC_WIN_MAP_MASK: u8 = 1 << 6;
 pub const LCDC_WIN_ENABLE_MASK: u8 = 1 << 5;
 pub const LCDC_BG_WIN_ADDR_MODE_MASK: u8 = 1 << 4;
 pub const LCDC_BG_MAP_MASK: u8 = 1 << 3;
+pub const LCDC_OBJ_SIZE_MASK: u8 = 1 << 2;
+pub const LCDC_OBJ_ENABLE_MASK: u8 = 1 << 1;
 pub const LCDC_BG_WIN_PRIORITY_MASK: u8 = 1;
+pub const OAM_START_ADDR: u16 = 0xFE00;
+pub const OAM_END_ADDR: u16 = 0xFE9F;
+pub const OAM_ENTRY_SIZE: u8 = 4;
 
 // For Tests
 pub const RESULT_VRAM_START: usize = 0x9800;
