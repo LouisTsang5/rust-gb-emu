@@ -10,6 +10,28 @@ use crate::{
     mem::MemoryHandle,
 };
 
+struct Tile<'a>(&'a [u8]);
+
+impl<'a> From<&'a [u8]> for Tile<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        assert!(value.len() == TILE_SIZE as usize);
+        Tile(value)
+    }
+}
+
+impl Tile<'_> {
+    fn palette(&self, x: u8, y: u8) -> u8 {
+        // Get the two bytes
+        let tile = self.0;
+        let b_lo = tile[y as usize * 2];
+        let b_hi = tile[y as usize * 2 + 1];
+        let rs = 7 - x;
+
+        // Find the palette to use
+        (((b_hi >> rs) & 0x1) << 1) | ((b_lo >> rs) & 0x1)
+    }
+}
+
 pub fn make(memory: MemoryHandle, window: Window) -> Ppu {
     Ppu {
         memory,
@@ -48,8 +70,8 @@ fn get_palette(
     let tile_idx = tiles_map[tile_map_idx];
 
     // Calculate the coordinate within the tile
-    let tile_x = x % TILE_WIDTH as usize;
-    let tile_y = y % TILE_WIDTH as usize;
+    let tile_x = x as u8 % TILE_WIDTH;
+    let tile_y = y as u8 % TILE_WIDTH;
 
     // Adjust tile index if signed address mode is set
     let tile_idx = match unsigned_addr_mod {
@@ -63,12 +85,7 @@ fn get_palette(
 
     // Get the two bytes
     let tile = tiles_arr.chunks(TILE_SIZE as usize).nth(tile_idx).unwrap();
-    let b_lo = tile[tile_y * 2];
-    let b_hi = tile[tile_y * 2 + 1];
-    let rs = 7 - tile_x;
-
-    // Find the palette to use
-    (((b_hi >> rs) & 0x1) << 1) | ((b_lo >> rs) & 0x1)
+    Tile::from(tile).palette(tile_x, tile_y)
 }
 
 impl Ppu {
