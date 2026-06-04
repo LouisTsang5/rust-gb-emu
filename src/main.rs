@@ -110,7 +110,7 @@ fn main() {
         }
 
         // Check if SIGINT
-        if rx.try_recv().is_ok() {
+        if rx.try_recv().is_ok() || !ppu.is_window_open() {
             break;
         }
     }
