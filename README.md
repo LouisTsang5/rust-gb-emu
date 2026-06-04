@@ -20,4 +20,7 @@ Substitute <ROM_FILE> with a ROM binary file
 - https://gbdev.io/pandocs
 
 ### Test ROMs
+
+Currently passes all tests in **cpu_instrs** and **instr_timing**
+
 - https://github.com/retrio/gb-test-roms
