@@ -1,5 +1,6 @@
 use crate::{
     constants::{IE_ADDR, IF_ADDR, INTERRUPT_HANDLER_BASE_ADDR, T_N_INTERRUPT},
+    cpu::instr::{OpExecInfo, PrefixOpExecInfo},
     mem::MemoryHandle,
 };
 
@@ -197,13 +198,15 @@ impl Cpu {
         (n_cycle, should_exit_halt)
     }
 
-    pub fn step(&mut self) -> u8 {
+    pub fn step(&mut self) -> (u8, Option<OpExecInfo>, Option<PrefixOpExecInfo>) {
         let mut cycles_taken = 0;
+        let mut op_info: Option<OpExecInfo> = None;
+        let mut prefix_op_info: Option<PrefixOpExecInfo> = None;
 
         // No opcode execution in halt mode
         if !self.halted {
             // Execute operation
-            cycles_taken += self.execute_op();
+            cycles_taken += self.execute_op(&mut op_info, &mut prefix_op_info);
 
             // IME flag handling
             match self.ime_pending {
@@ -226,7 +229,7 @@ impl Cpu {
         }
 
         // Return total number of cycles taken
-        cycles_taken
+        (cycles_taken, op_info, prefix_op_info)
     }
 }
 

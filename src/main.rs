@@ -1,6 +1,10 @@
-use std::io::Read;
+use std::{io::Read, time::Duration};
 
-use constants::{MEM_DUMP_FILE, RESULT_VRAM_END, RESULT_VRAM_START};
+use constants::{
+    LCDC_ADDR, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK,
+    LCDC_OBJ_SIZE_MASK, LCDC_WIN_MAP_MASK, MEM_DUMP_FILE, RESULT_VRAM_END, RESULT_VRAM_START,
+    SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TARGET_FPS,
+};
 
 mod constants;
 mod cpu;
@@ -33,21 +37,77 @@ fn main() {
     {
         let file_name = std::env::args().nth(1).expect("Missing ROM File");
         read_rom(&memory, &file_name);
-        // make_test_vram(&memory);
     }
 
     // Make CPU
     let mut cpu = cpu::make(memory.clone());
 
-    // Loop
+    // Make PPU
+    let mut window = minifb::Window::new(
+        "GB EMU",
+        SCREEN_PIXEL_WIDTH,
+        SCREEN_PIXEL_HEIGHT,
+        minifb::WindowOptions {
+            resize: true,
+            scale: minifb::Scale::X4,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    window.set_target_fps(TARGET_FPS as usize);
+    let mut ppu = ppu::make(memory.clone(), window);
+
+    // Initialize PPU display
+    memory.write(SCX_ADDR, 0);
+    memory.write(SCY_ADDR, 0);
+    memory.write(
+        LCDC_ADDR,
+        0x0000
+            // | LCDC_WIN_ENABLE_MASK
+            | LCDC_WIN_MAP_MASK
+            | LCDC_BG_WIN_ADDR_MODE_MASK
+            | LCDC_BG_WIN_PRIORITY_MASK
+            | LCDC_OBJ_SIZE_MASK
+            | LCDC_OBJ_ENABLE_MASK,
+    );
+
+    // Main loop
+    let mut last_render = std::time::Instant::now();
     loop {
+        // Render
+        let now = std::time::Instant::now();
+        let should_render = now.duration_since(last_render)
+            >= Duration::from_millis((1000.0 / TARGET_FPS as f64) as u64);
+        if should_render {
+            last_render = now;
+            ppu.render();
+        }
+
         // Step the CPU
-        let cycles_taken = cpu.step();
+        let (cycles_taken, op_info, prefix_op_info) = cpu.step();
 
         // Increment timer
         let cycles_taken = std::cmp::max(cycles_taken, 1); // Al least 1 cycle is taken (inc timer even in cpu halted mode)
         for _ in 0..cycles_taken {
             timer.step();
+        }
+
+        // Print info
+        if let Some(info) = op_info {
+            println!(
+                "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
+                info.mem_addr,
+                info.op,
+                u8::from(info.op)
+            );
+        }
+        if let Some(info) = prefix_op_info {
+            println!(
+                "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
+                info.mem_addr,
+                info.op,
+                u8::from(info.op)
+            );
         }
 
         // Check if SIGINT

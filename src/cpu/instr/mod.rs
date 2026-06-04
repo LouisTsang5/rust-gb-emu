@@ -328,7 +328,7 @@ impl std::fmt::Display for CbPrefixOp {
 }
 
 // Z = [], X = +
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Op {
     Nop,                      // nop
     LdR16Imm16(ParamR16),     // ld r16, imm16
@@ -641,6 +641,16 @@ impl std::fmt::Display for Op {
     }
 }
 
+pub struct PrefixOpExecInfo {
+    pub mem_addr: u16,
+    pub op: CbPrefixOp,
+}
+
+pub struct OpExecInfo {
+    pub mem_addr: u16,
+    pub op: Op,
+}
+
 impl super::Cpu {
     fn get_r8_val(&self, param: ParamR8) -> u8 {
         match param {
@@ -893,7 +903,11 @@ impl super::Cpu {
         }
     }
 
-    pub fn execute_op(&mut self) -> u8 {
+    pub fn execute_op(
+        &mut self,
+        op_info: &mut Option<OpExecInfo>,
+        prefix_op_info: &mut Option<PrefixOpExecInfo>,
+    ) -> u8 {
         // Fetch
         let byte = self.mem.read(self.pc.post_inc());
 
@@ -903,13 +917,11 @@ impl super::Cpu {
             None => panic!("Invalid opcode 0x{:02X} (0b{:08b})", byte, byte),
         };
 
-        // Print opcode
-        println!(
-            "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
-            self.pc.get().wrapping_sub(1),
+        // Set op code
+        op_info.replace(OpExecInfo {
+            mem_addr: self.pc.get().wrapping_sub(1),
             op,
-            byte
-        );
+        });
 
         // Execute
         match op {
@@ -1554,12 +1566,10 @@ impl super::Cpu {
                 let b = self.mem.read(self.pc.post_inc());
                 let op = CbPrefixOp::try_from(b)
                     .unwrap_or_else(|_| panic!("Invalid 0xCB prefix op code 0x{:02X}", b));
-                println!(
-                    "0x{0:04x}: {1} (0b{2:08b}) (0x{2:02x})",
-                    self.pc.get().wrapping_sub(1),
+                prefix_op_info.replace(PrefixOpExecInfo {
+                    mem_addr: self.pc.get().wrapping_sub(1),
                     op,
-                    u8::from(op),
-                );
+                });
                 self.step_cb_op(op)
             }
             Op::LdhZCZA => {

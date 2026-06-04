@@ -18,6 +18,7 @@ pub const DIV_INC_PER_M_CYCLE: u16 = 0x0004;
 pub const TIMER_INTERRUPT_MASK: u8 = 0x04;
 
 // Graphics
+pub const TARGET_FPS: u8 = 30;
 pub const VRAM_START_ADDR: u16 = 0x8000;
 pub const VRAM_SIZE: u16 = 0x2000;
 pub const TILES_ARR_START_ADDR: u16 = VRAM_START_ADDR;
