@@ -51,13 +51,13 @@ impl MemoryHandle {
         };
     }
 
-    pub fn vram(&self) -> Ref<[u8]> {
+    pub fn vram(&self) -> Ref<'_, [u8]> {
         Ref::map(self.mem.borrow(), |m| {
             &m.inner[VRAM_START_ADDR as usize..(VRAM_START_ADDR + VRAM_SIZE) as usize]
         })
     }
 
-    pub fn oam(&self) -> Ref<[u8]> {
+    pub fn oam(&self) -> Ref<'_, [u8]> {
         Ref::map(self.mem.borrow(), |m| {
             &m.inner[OAM_START_ADDR as usize..OAM_END_ADDR as usize]
         })
