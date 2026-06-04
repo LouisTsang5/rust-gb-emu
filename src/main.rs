@@ -75,12 +75,11 @@ fn main() {
     let mut last_render = std::time::Instant::now();
     loop {
         // Render
-        let now = std::time::Instant::now();
-        let should_render = now.duration_since(last_render)
+        let should_render = std::time::Instant::now().duration_since(last_render)
             >= Duration::from_millis((1000.0 / TARGET_FPS as f64) as u64);
         if should_render {
-            last_render = now;
             ppu.render();
+            last_render = std::time::Instant::now();
         }
 
         // Step the CPU
