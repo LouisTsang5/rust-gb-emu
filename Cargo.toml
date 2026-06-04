@@ -6,3 +6,7 @@ edition = "2021"
 [dependencies]
 ctrlc = "3.5.2"
 minifb = "0.28.0"
+
+[[bin]]
+name = "gb-emu"
+path = "src/main.rs"
