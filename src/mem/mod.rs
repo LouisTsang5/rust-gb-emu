@@ -59,7 +59,7 @@ impl MemoryHandle {
 
     pub fn oam(&self) -> Ref<'_, [u8]> {
         Ref::map(self.mem.borrow(), |m| {
-            &m.inner[OAM_START_ADDR as usize..OAM_END_ADDR as usize]
+            &m.inner[OAM_START_ADDR as usize..(OAM_END_ADDR + 1) as usize]
         })
     }
 }

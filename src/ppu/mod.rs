@@ -4,9 +4,9 @@ use crate::{
     constants::{
         LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
         LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK,
-        OAM_END_ADDR, OAM_ENTRY_SIZE, OAM_START_ADDR, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
-        SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
-        TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
+        OAM_ENTRY_SIZE, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR,
+        TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR,
+        WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -175,10 +175,8 @@ impl Ppu {
         let vram = self.memory.vram();
         let obj_double_size = lcdc & LCDC_OBJ_SIZE_MASK > 0;
 
-        const N_OBJECTS: usize = ((OAM_END_ADDR - OAM_START_ADDR) / OAM_ENTRY_SIZE as u16) as usize;
         for obj in oam
             .chunks(OAM_ENTRY_SIZE as usize)
-            .take(N_OBJECTS)
             .map(|o| ObjectAttribute::from(o))
         {
             let x = obj.x();
