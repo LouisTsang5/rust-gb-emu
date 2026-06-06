@@ -47,6 +47,10 @@ pub const LCDC_BG_WIN_PRIORITY_MASK: u8 = 1;
 pub const OAM_START_ADDR: u16 = 0xFE00;
 pub const OAM_END_ADDR: u16 = 0xFE9F;
 pub const OAM_ENTRY_SIZE: u8 = 4;
+pub const OAM_OBJ_PRIORITY_MASK: u8 = 0x80;
+pub const OAM_OBJ_FLIP_Y_MASK: u8 = 0x40;
+pub const OAM_OBJ_FLIP_X_MASK: u8 = 0x20;
+pub const OAM_OBJ_DMG_PALETTE_MASK: u8 = 0x10;
 
 // For Tests
 pub const RESULT_VRAM_START: usize = 0x9800;

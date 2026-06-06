@@ -4,9 +4,10 @@ use crate::{
     constants::{
         LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
         LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK,
-        OAM_ENTRY_SIZE, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR,
-        TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR,
-        WX_OFFSET, WY_ADDR,
+        OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK, OAM_OBJ_FLIP_Y_MASK,
+        OAM_OBJ_PRIORITY_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
+        SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR,
+        WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -53,6 +54,26 @@ impl ObjectAttribute<'_> {
 
     fn tile_idx(&self) -> usize {
         self.0[2] as usize
+    }
+
+    fn attr(&self) -> u8 {
+        self.0[3]
+    }
+
+    fn priority(&self) -> bool {
+        self.attr() & OAM_OBJ_PRIORITY_MASK > 0
+    }
+
+    fn flip_y(&self) -> bool {
+        self.attr() & OAM_OBJ_FLIP_Y_MASK > 0
+    }
+
+    fn flip_x(&self) -> bool {
+        self.attr() & OAM_OBJ_FLIP_X_MASK > 0
+    }
+
+    fn dmg_palette(&self) -> bool {
+        self.attr() & OAM_OBJ_DMG_PALETTE_MASK > 0
     }
 }
 
