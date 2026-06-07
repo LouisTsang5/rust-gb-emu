@@ -259,11 +259,18 @@ impl Ppu {
                         // Calculate screen x position
                         let screen_x = obj.x().wrapping_add(tile_x).wrapping_sub(TILE_WIDTH);
 
-                        // Update frame buffer
+                        // Find frame buffer pixel
                         let framebuf_idx =
                             screen_x as usize + screen_y as usize * SCREEN_PIXEL_WIDTH;
-                        self.framebuf[framebuf_idx] =
-                            PALETTE_RGB[tile.palette(tile_x, tile_y) as usize];
+                        let pixel = &mut self.framebuf[framebuf_idx];
+
+                        // Don't draw if priority flag is set and pixel already has color
+                        if obj.priority() && *pixel != PALETTE_RGB[0] {
+                            continue;
+                        }
+
+                        // Set pixel color
+                        *pixel = PALETTE_RGB[tile.palette(tile_x, tile_y) as usize];
                     }
                 }
             }
