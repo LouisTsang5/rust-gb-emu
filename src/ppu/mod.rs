@@ -3,11 +3,12 @@ use minifb::Window;
 use crate::{
     constants::{
         BGP_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK,
-        LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK,
-        LCDC_WIN_MAP_MASK, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
-        OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, OBP_0_ADDR, OBP_1_ADDR, PALETTE_RGB,
-        SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR,
-        TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
+        LCDC_BG_WIN_PRIORITY_MASK, LCDC_ENABLE_MASK, LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK,
+        LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK,
+        OAM_OBJ_FLIP_X_MASK, OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, OBP_0_ADDR, OBP_1_ADDR,
+        PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR,
+        TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR,
+        WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -303,22 +304,23 @@ impl Ppu {
     }
 
     pub fn render(&mut self) {
-        // Make screen white
-        for b in self.framebuf.iter_mut() {
-            *b = 0x00FFFFFF;
-        }
-
         // Get lcdc
         let lcdc = self.memory.read(LCDC_ADDR);
 
-        // Render screen
-        if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
-            self.render_screen(lcdc);
-        }
+        // Check if lcdc / ppu is enabled
+        if (lcdc & LCDC_ENABLE_MASK) > 0 {
+            // Render screen
+            if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
+                self.render_screen(lcdc);
+            }
 
-        // Render objects
-        if (lcdc & LCDC_OBJ_ENABLE_MASK) > 0 {
-            self.render_object(lcdc);
+            // Render objects
+            if (lcdc & LCDC_OBJ_ENABLE_MASK) > 0 {
+                self.render_object(lcdc);
+            }
+        } else {
+            // Make screen white, no rendering is needed
+            self.framebuf.fill(0x00FFFFFF);
         }
 
         // Update window
