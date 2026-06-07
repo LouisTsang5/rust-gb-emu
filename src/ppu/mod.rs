@@ -22,12 +22,15 @@ impl<'a> From<&'a [u8]> for Tile<'a> {
 }
 
 impl Tile<'_> {
-    fn palette(&self, x: u8, y: u8) -> u8 {
+    fn palette(&self, x: u8, y: u8, flip_x: bool) -> u8 {
         // Get the two bytes
         let tile = self.0;
         let b_lo = tile[y as usize * 2];
         let b_hi = tile[y as usize * 2 + 1];
-        let rs = 7 - x;
+        let rs = match flip_x {
+            true => x,
+            false => 7 - x,
+        };
 
         // Find the palette to use
         (((b_hi >> rs) & 0x1) << 1) | ((b_lo >> rs) & 0x1)
@@ -130,7 +133,7 @@ fn get_palette(
 
     // Get the two bytes
     let tile = tiles_arr.chunks(TILE_SIZE as usize).nth(tile_idx).unwrap();
-    Tile::from(tile).palette(tile_x, tile_y)
+    Tile::from(tile).palette(tile_x, tile_y, false)
 }
 
 impl Ppu {
@@ -270,7 +273,7 @@ impl Ppu {
                         }
 
                         // Set pixel color
-                        *pixel = PALETTE_RGB[tile.palette(tile_x, tile_y) as usize];
+                        *pixel = PALETTE_RGB[tile.palette(tile_x, tile_y, obj.flip_x()) as usize];
                     }
                 }
             }
