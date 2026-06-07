@@ -2,12 +2,12 @@ use minifb::Window;
 
 use crate::{
     constants::{
-        LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
-        LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK,
-        OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK, OAM_OBJ_FLIP_Y_MASK,
-        OAM_OBJ_PRIORITY_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
-        SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR,
-        WX_ADDR, WX_OFFSET, WY_ADDR,
+        BGP_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK,
+        LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK,
+        LCDC_WIN_MAP_MASK, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
+        OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
+        SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
+        TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -186,14 +186,19 @@ impl Ppu {
                 };
 
                 // Check priority
-                let palette_idx = match win_palette > 0 {
+                let bgp_idx = match win_palette > 0 {
                     true => win_palette,
                     false => bg_palette,
                 } as usize;
 
+                // Get palette
+                assert!(bgp_idx < 4);
+                let bgp = self.memory.read(BGP_ADDR);
+                let palette_idx = (bgp >> (bgp_idx * 2)) & 0x3;
+
                 // Set the framebuf
                 let framebuf_idx = screen_x + screen_y * SCREEN_PIXEL_WIDTH;
-                self.framebuf[framebuf_idx] = PALETTE_RGB[palette_idx];
+                self.framebuf[framebuf_idx] = PALETTE_RGB[palette_idx as usize];
             }
         }
     }
