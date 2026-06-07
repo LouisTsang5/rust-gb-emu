@@ -5,9 +5,9 @@ use crate::{
         BGP_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK,
         LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK,
         LCDC_WIN_MAP_MASK, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
-        OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, PALETTE_RGB, SCREEN_PIXEL_HEIGHT,
-        SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE,
-        TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
+        OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, OBP_0_ADDR, OBP_1_ADDR, PALETTE_RGB,
+        SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR,
+        TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -281,9 +281,17 @@ impl Ppu {
                             continue;
                         }
 
+                        // Get palette
+                        let obp_idx = tile.palette(tile_x, tile_y, obj.flip_x(), obj.flip_y());
+                        assert!(obp_idx < 4);
+                        let obp = self.memory.read(match obj.dmg_palette() {
+                            false => OBP_0_ADDR,
+                            true => OBP_1_ADDR,
+                        });
+                        let palette_idx = (obp >> (obp_idx * 2)) & 0x3;
+
                         // Set pixel color
-                        *pixel = PALETTE_RGB
-                            [tile.palette(tile_x, tile_y, obj.flip_x(), obj.flip_y()) as usize];
+                        *pixel = PALETTE_RGB[palette_idx as usize];
                     }
                 }
             }
