@@ -17,6 +17,7 @@ Substitute <ROM_FILE> with a ROM binary file
 ## Reference Materials
 
 ### Hardware Spec
+
 - https://gbdev.io/pandocs
 
 ### Test ROMs

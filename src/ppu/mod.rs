@@ -3,15 +3,15 @@ use minifb::Window;
 use crate::{
     constants::{
         BGP_ADDR, DOTS_PER_SCAN_LINE, IF_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK,
-        LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK,
-        LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK, LCD_INTERRUPT_MASK, LYC_ADDR,
-        LY_ADDR, N_SCAN_LINES, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
-        OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, OBP_0_ADDR, OBP_1_ADDR, PALETTE_RGB,
-        PPU_MODE_HBLANK, PPU_MODE_VBLANK, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
-        SCY_ADDR, STAT_ADDR, STAT_HBLANK_INT_SELECT_MASK, STAT_LYC_INT_SELECT_MASK, STAT_LYC_MASK,
-        STAT_MODE_1_INT_SELECT_MASK, STAT_MODE_2_INT_SELECT_MASK, TILE_MAP_START_ADDR,
-        TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VBLANK_INTERRUPT_MASK, VRAM_START_ADDR, WX_ADDR,
-        WX_OFFSET, WY_ADDR,
+        LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK, LCDC_ENABLE_MASK,
+        LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK,
+        LCD_INTERRUPT_MASK, LYC_ADDR, LY_ADDR, N_SCAN_LINES, OAM_ENTRY_SIZE,
+        OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK, OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK,
+        OBP_0_ADDR, OBP_1_ADDR, PALETTE_RGB, PPU_MODE_HBLANK, PPU_MODE_VBLANK, SCREEN_PIXEL_HEIGHT,
+        SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, STAT_ADDR, STAT_HBLANK_INT_SELECT_MASK,
+        STAT_LYC_INT_SELECT_MASK, STAT_LYC_MASK, STAT_MODE_1_INT_SELECT_MASK,
+        STAT_MODE_2_INT_SELECT_MASK, TILE_MAP_START_ADDR, TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH,
+        VBLANK_INTERRUPT_MASK, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -309,22 +309,23 @@ impl Ppu {
     }
 
     pub fn render(&mut self) {
-        // Make screen white
-        for b in self.framebuf.iter_mut() {
-            *b = 0x00FFFFFF;
-        }
-
         // Get lcdc
         let lcdc = self.memory.read(LCDC_ADDR);
 
-        // Render screen
-        if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
-            self.render_screen(lcdc);
-        }
+        // Check if lcdc / ppu is enabled
+        if (lcdc & LCDC_ENABLE_MASK) > 0 {
+            // Render screen
+            if (lcdc & LCDC_BG_WIN_PRIORITY_MASK) > 0 {
+                self.render_screen(lcdc);
+            }
 
-        // Render objects
-        if (lcdc & LCDC_OBJ_ENABLE_MASK) > 0 {
-            self.render_object(lcdc);
+            // Render objects
+            if (lcdc & LCDC_OBJ_ENABLE_MASK) > 0 {
+                self.render_object(lcdc);
+            }
+        } else {
+            // Make screen white, no rendering is needed
+            self.framebuf.fill(0x00FFFFFF);
         }
 
         // Update window

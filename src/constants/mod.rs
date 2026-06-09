@@ -42,6 +42,7 @@ pub const WY_ADDR: u16 = 0xFF4A;
 pub const WX_ADDR: u16 = 0xFF4B;
 pub const WX_OFFSET: usize = 7;
 pub const LCDC_ADDR: u16 = 0xFF4;
+pub const LCDC_ENABLE_MASK: u8 = 1 << 7;
 pub const LCDC_WIN_MAP_MASK: u8 = 1 << 6;
 pub const LCDC_WIN_ENABLE_MASK: u8 = 1 << 5;
 pub const LCDC_BG_WIN_ADDR_MODE_MASK: u8 = 1 << 4;
