@@ -5,8 +5,8 @@ use std::{
 
 use crate::{
     constants::{
-        DIV_ADDR, MEM_SIZE, OAM_END_ADDR, OAM_START_ADDR, TAC_ADDR, TIMA_ADDR, TMA_ADDR, VRAM_SIZE,
-        VRAM_START_ADDR,
+        DIV_ADDR, MEM_SIZE, OAM_DMA_ADDR, OAM_SIZE, OAM_START_ADDR, TAC_ADDR, TIMA_ADDR, TMA_ADDR,
+        VRAM_SIZE, VRAM_START_ADDR,
     },
     timer::TimerHandle,
 };
@@ -47,6 +47,10 @@ impl MemoryHandle {
             TIMA_ADDR => self.mem.borrow_mut().timer.set_tima(val),
             TMA_ADDR => self.mem.borrow_mut().timer.set_tma(val),
             TAC_ADDR => self.mem.borrow_mut().timer.set_tac(val),
+            OAM_DMA_ADDR => {
+                self.oam_dma_transfer(val);
+                self.mem.borrow_mut().inner[addr as usize] = val;
+            }
             _ => self.mem.borrow_mut().inner[addr as usize] = val,
         };
     }
@@ -59,7 +63,15 @@ impl MemoryHandle {
 
     pub fn oam(&self) -> Ref<'_, [u8]> {
         Ref::map(self.mem.borrow(), |m| {
-            &m.inner[OAM_START_ADDR as usize..(OAM_END_ADDR + 1) as usize]
+            &m.inner[OAM_START_ADDR as usize..(OAM_START_ADDR + OAM_SIZE) as usize]
         })
+    }
+
+    fn oam_dma_transfer(&self, src_addr_hi: u8) {
+        let src_addr = (src_addr_hi << 2) as usize;
+        self.mem
+            .borrow_mut()
+            .inner
+            .copy_within(src_addr..OAM_SIZE as usize, OAM_START_ADDR as usize);
     }
 }
