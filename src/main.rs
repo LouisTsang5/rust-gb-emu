@@ -1,9 +1,9 @@
 use std::{io::Read, time::Duration};
 
 use constants::{
-    LCDC_ADDR, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK,
-    LCDC_OBJ_SIZE_MASK, LCDC_WIN_MAP_MASK, MEM_DUMP_FILE, RESULT_VRAM_END, RESULT_VRAM_START,
-    SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TARGET_FPS,
+    DOTS_PER_CYCLE_NORMAL_SPEED, LCDC_ADDR, LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK,
+    LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_MAP_MASK, MEM_DUMP_FILE, RESULT_VRAM_END,
+    RESULT_VRAM_START, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TARGET_FPS,
 };
 
 mod constants;
@@ -90,6 +90,9 @@ fn main() {
         for _ in 0..cycles_taken {
             timer.step();
         }
+
+        // Increment ppu dots
+        ppu.step(cycles_taken as u16 * DOTS_PER_CYCLE_NORMAL_SPEED);
 
         // Print info
         if let Some(info) = op_info {

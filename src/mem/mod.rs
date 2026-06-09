@@ -5,8 +5,9 @@ use std::{
 
 use crate::{
     constants::{
-        DIV_ADDR, MEM_SIZE, OAM_DMA_ADDR, OAM_SIZE, OAM_START_ADDR, TAC_ADDR, TIMA_ADDR, TMA_ADDR,
-        VRAM_SIZE, VRAM_START_ADDR,
+        DIV_ADDR, MEM_SIZE, OAM_DMA_ADDR, OAM_SIZE, OAM_START_ADDR, STAT_ADDR,
+        STAT_HBLANK_INT_SELECT_MASK, STAT_LYC_INT_SELECT_MASK, STAT_MODE_1_INT_SELECT_MASK,
+        STAT_MODE_2_INT_SELECT_MASK, TAC_ADDR, TIMA_ADDR, TMA_ADDR, VRAM_SIZE, VRAM_START_ADDR,
     },
     timer::TimerHandle,
 };
@@ -47,6 +48,14 @@ impl MemoryHandle {
             TIMA_ADDR => self.mem.borrow_mut().timer.set_tima(val),
             TMA_ADDR => self.mem.borrow_mut().timer.set_tma(val),
             TAC_ADDR => self.mem.borrow_mut().timer.set_tac(val),
+            STAT_ADDR => {
+                // Only the int select bits are writable
+                self.mem.borrow_mut().inner[addr as usize] = val
+                    & (STAT_LYC_INT_SELECT_MASK
+                        | STAT_MODE_2_INT_SELECT_MASK
+                        | STAT_MODE_1_INT_SELECT_MASK
+                        | STAT_HBLANK_INT_SELECT_MASK)
+            }
             OAM_DMA_ADDR => {
                 self.oam_dma_transfer(val);
                 self.mem.borrow_mut().inner[addr as usize] = val;

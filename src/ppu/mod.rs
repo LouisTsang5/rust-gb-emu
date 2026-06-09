@@ -2,12 +2,16 @@ use minifb::Window;
 
 use crate::{
     constants::{
-        BGP_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK, LCDC_BG_WIN_ADDR_MODE_MASK,
-        LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK, LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK,
-        LCDC_WIN_MAP_MASK, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
+        BGP_ADDR, DOTS_PER_SCAN_LINE, IF_ADDR, LCDC_ADDR, LCDC_BG_MAP_MASK,
+        LCDC_BG_WIN_ADDR_MODE_MASK, LCDC_BG_WIN_PRIORITY_MASK, LCDC_OBJ_ENABLE_MASK,
+        LCDC_OBJ_SIZE_MASK, LCDC_WIN_ENABLE_MASK, LCDC_WIN_MAP_MASK, LCD_INTERRUPT_MASK, LYC_ADDR,
+        LY_ADDR, N_SCAN_LINES, OAM_ENTRY_SIZE, OAM_OBJ_DMG_PALETTE_MASK, OAM_OBJ_FLIP_X_MASK,
         OAM_OBJ_FLIP_Y_MASK, OAM_OBJ_PRIORITY_MASK, OBP_0_ADDR, OBP_1_ADDR, PALETTE_RGB,
-        SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR, SCY_ADDR, TILE_MAP_START_ADDR,
-        TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VRAM_START_ADDR, WX_ADDR, WX_OFFSET, WY_ADDR,
+        PPU_MODE_HBLANK, PPU_MODE_VBLANK, SCREEN_PIXEL_HEIGHT, SCREEN_PIXEL_WIDTH, SCX_ADDR,
+        SCY_ADDR, STAT_ADDR, STAT_HBLANK_INT_SELECT_MASK, STAT_LYC_INT_SELECT_MASK, STAT_LYC_MASK,
+        STAT_MODE_1_INT_SELECT_MASK, STAT_MODE_2_INT_SELECT_MASK, TILE_MAP_START_ADDR,
+        TILE_MAP_WIDTH, TILE_SIZE, TILE_WIDTH, VBLANK_INTERRUPT_MASK, VRAM_START_ADDR, WX_ADDR,
+        WX_OFFSET, WY_ADDR,
     },
     mem::MemoryHandle,
 };
@@ -89,6 +93,7 @@ pub fn make(memory: MemoryHandle, window: Window) -> Ppu {
         memory,
         framebuf: [0; SCREEN_PIXEL_WIDTH * SCREEN_PIXEL_HEIGHT],
         window,
+        acc_dot_size: 0,
     }
 }
 
@@ -104,8 +109,9 @@ fn get_map(vram: &[u8], map_idx: u8) -> &[u8] {
 #[derive(Debug)]
 pub struct Ppu {
     memory: MemoryHandle,
-    framebuf: [u32; SCREEN_PIXEL_WIDTH * SCREEN_PIXEL_HEIGHT],
     window: Window,
+    framebuf: [u32; SCREEN_PIXEL_WIDTH * SCREEN_PIXEL_HEIGHT],
+    acc_dot_size: u16,
 }
 
 fn get_palette(
@@ -325,5 +331,66 @@ impl Ppu {
         self.window
             .update_with_buffer(&self.framebuf, SCREEN_PIXEL_WIDTH, SCREEN_PIXEL_HEIGHT)
             .unwrap();
+    }
+
+    pub fn step(&mut self, dots_taken: u16) {
+        // Increment accumulated dots
+        self.acc_dot_size += dots_taken;
+
+        //  Advance scan lines
+        while self.acc_dot_size >= DOTS_PER_SCAN_LINE {
+            self.advance_scanline();
+            self.acc_dot_size -= DOTS_PER_SCAN_LINE;
+        }
+    }
+
+    fn advance_scanline(&mut self) {
+        // Update LY register
+        let ly = (self.memory.read(LY_ADDR) + 1) % N_SCAN_LINES;
+        self.memory.write(LY_ADDR, ly);
+
+        // Read STAT & LYC
+        let lyc = self.memory.read(LYC_ADDR);
+        let lyc_enable = ly == lyc;
+        let enter_vblank = ly == SCREEN_PIXEL_HEIGHT as u8;
+        let in_vblank = ly >= SCREEN_PIXEL_HEIGHT as u8;
+        let stat = self.memory.read(STAT_ADDR);
+        let lyc_select = (stat & STAT_LYC_INT_SELECT_MASK) > 0;
+        let mode_2_select = (stat & STAT_MODE_2_INT_SELECT_MASK) > 0;
+        let mode_1_select = (stat & STAT_MODE_1_INT_SELECT_MASK) > 0;
+        let h_blank_select = (stat & STAT_HBLANK_INT_SELECT_MASK) > 0;
+
+        // LCD interupt
+        // The whole scan line is processed atomically in the emulator, therefore int select for mode 0-2 always triggers interrupt
+        let int_mode_2_hblank = !in_vblank && (mode_2_select || h_blank_select);
+        let int_mode_1 = in_vblank && mode_1_select;
+        let int_lyc = lyc_select && lyc_enable;
+        if int_mode_2_hblank || int_mode_1 || int_lyc {
+            self.memory
+                .write(IF_ADDR, self.memory.read(IF_ADDR) | LCD_INTERRUPT_MASK);
+        }
+
+        // VBlank interrupt when first enter vblank
+        if enter_vblank {
+            self.memory
+                .write(IF_ADDR, self.memory.read(IF_ADDR) | VBLANK_INTERRUPT_MASK);
+        }
+
+        // Update STAT LYC flag
+        let stat = match lyc_enable {
+            true => stat | STAT_LYC_MASK,
+            false => stat & !STAT_LYC_MASK,
+        };
+
+        // Update STAT PPU MODE flag
+        // The whole scan line is processed atomically in the emulator, therefore ppu mode is always in either H-Blank or V-Blank
+        let stat = stat & 0xFC // Clear lower 2 bits and set them base on current mode
+            | match in_vblank {
+                true => PPU_MODE_VBLANK,
+                false => PPU_MODE_HBLANK,
+            };
+
+        // Write stat
+        self.memory.write(STAT_ADDR, stat);
     }
 }
